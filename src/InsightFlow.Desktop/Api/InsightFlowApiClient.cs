@@ -11,6 +11,8 @@ namespace InsightFlow.Desktop.Api;
 public sealed class InsightFlowApiClient
 {
     private const int MaximumErrorBodyBytes = 16 * 1024;
+    public const string PriceGreaterThanOrEqual = "PRECO_MAIOR_IGUAL";
+    public const string PriceLessThanOrEqual = "PRECO_MENOR_IGUAL";
     private readonly HttpClient _httpClient;
     private readonly UserSession _session;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -69,6 +71,68 @@ public sealed class InsightFlowApiClient
             HttpMethod.Get, $"/api/v1/ativos/{ativoId:D}/historico?periodo={Uri.EscapeDataString(periodo)}", null, true, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<IndicatorResponse>> GetIndicatorsAsync(Guid ativoId, CancellationToken cancellationToken = default) =>
+        await SendAsync<List<IndicatorResponse>>(
+            HttpMethod.Get, $"/api/v1/ativos/{RequiredId(ativoId, nameof(ativoId)):D}/indicadores", null, true, cancellationToken).ConfigureAwait(false);
+
+    public async Task<IReadOnlyList<SignalResponse>> GetSignalsAsync(Guid ativoId, CancellationToken cancellationToken = default) =>
+        await SendAsync<List<SignalResponse>>(
+            HttpMethod.Get, $"/api/v1/ativos/{RequiredId(ativoId, nameof(ativoId)):D}/sinais", null, true, cancellationToken).ConfigureAwait(false);
+
+    public Task<BacktestResponse> GetBacktestAsync(Guid ativoId, Guid regraId, CancellationToken cancellationToken = default) =>
+        SendAsync<BacktestResponse>(HttpMethod.Get,
+            $"/api/v1/ativos/{RequiredId(ativoId, nameof(ativoId)):D}/sinais/{RequiredId(regraId, nameof(regraId)):D}/backtest",
+            null, true, cancellationToken);
+
+    public async Task<IReadOnlyList<AlertResponse>> GetAlertsAsync(CancellationToken cancellationToken = default) =>
+        await SendAsync<List<AlertResponse>>(HttpMethod.Get, "/api/v1/alertas", null, true, cancellationToken).ConfigureAwait(false);
+
+    public Task<AlertResponse> CreateAlertAsync(
+        string ticker,
+        string tipoCondicao,
+        decimal valorAlvo,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ticker);
+        ValidateAlertCondition(tipoCondicao);
+        ValidateTargetValue(valorAlvo);
+        return SendAsync<AlertResponse>(HttpMethod.Post, "/api/v1/alertas",
+            new { ticker = ticker.Trim(), tipo_condicao = tipoCondicao, valor_alvo = valorAlvo }, true, cancellationToken);
+    }
+
+    public Task<AlertResponse> UpdateAlertAsync(
+        Guid alertaId,
+        string? tipoCondicao = null,
+        decimal? valorAlvo = null,
+        bool? ativo = null,
+        CancellationToken cancellationToken = default)
+    {
+        RequiredId(alertaId, nameof(alertaId));
+        if (tipoCondicao is null && valorAlvo is null && ativo is null)
+        {
+            throw new ArgumentException("Informe ao menos uma alteração para o alerta.");
+        }
+
+        var body = new Dictionary<string, object>();
+        if (tipoCondicao is not null)
+        {
+            ValidateAlertCondition(tipoCondicao);
+            body["tipo_condicao"] = tipoCondicao;
+        }
+        if (valorAlvo is not null)
+        {
+            ValidateTargetValue(valorAlvo.Value);
+            body["valor_alvo"] = valorAlvo.Value;
+        }
+        if (ativo is not null) body["ativo"] = ativo.Value;
+
+        return SendAsync<AlertResponse>(HttpMethod.Patch, $"/api/v1/alertas/{alertaId:D}", body, true, cancellationToken);
+    }
+
+    public Task DeleteAlertAsync(Guid alertaId, CancellationToken cancellationToken = default) =>
+        SendWithoutResponseAsync(HttpMethod.Delete,
+            $"/api/v1/alertas/{RequiredId(alertaId, nameof(alertaId)):D}", null, true, cancellationToken);
+
     private HttpRequestMessage CreateRequest(HttpMethod method, string path, object? body, bool authenticated)
     {
         var request = new HttpRequestMessage(method, path);
@@ -122,6 +186,11 @@ public sealed class InsightFlowApiClient
             SearchAssetResponse asset => ValidSearchAsset(asset),
             List<SearchAssetResponse> assets => assets.All(ValidSearchAsset),
             QuoteResponse quote => !string.IsNullOrWhiteSpace(quote.Ticker),
+            List<IndicatorResponse> indicators => indicators.All(ValidIndicator),
+            List<SignalResponse> signals => signals.All(ValidSignal),
+            BacktestResponse backtest => backtest.RegraId != Guid.Empty && backtest.AtivoId != Guid.Empty && backtest.TotalOcorrencias >= 0,
+            AlertResponse alert => ValidAlert(alert),
+            List<AlertResponse> alerts => alerts.All(ValidAlert),
             _ => true
         };
 
@@ -144,6 +213,39 @@ public sealed class InsightFlowApiClient
         !string.IsNullOrWhiteSpace(item.Ativo.Nome) &&
         !string.IsNullOrWhiteSpace(item.Ativo.Tipo) &&
         !string.IsNullOrWhiteSpace(item.Ativo.Moeda);
+
+    private static bool ValidIndicator(IndicatorResponse indicator) =>
+        !string.IsNullOrWhiteSpace(indicator.Tipo) &&
+        indicator.Parametros.ValueKind == JsonValueKind.Object &&
+        indicator.ValoresAuxiliares is null or { ValueKind: JsonValueKind.Object };
+
+    private static bool ValidSignal(SignalResponse signal) =>
+        signal.Id != Guid.Empty && signal.AtivoId != Guid.Empty && signal.RegraId != Guid.Empty &&
+        !string.IsNullOrWhiteSpace(signal.RegraNome) &&
+        !string.IsNullOrWhiteSpace(signal.RegraDescricao) &&
+        signal.Contexto.ValueKind == JsonValueKind.Object;
+
+    private static bool ValidAlert(AlertResponse alert) =>
+        alert.Id != Guid.Empty && alert.Ativo is not null && alert.Ativo.Id != Guid.Empty &&
+        !string.IsNullOrWhiteSpace(alert.Ativo.Ticker) &&
+        (alert.TipoCondicao is PriceGreaterThanOrEqual or PriceLessThanOrEqual) &&
+        alert.ValorAlvo > 0 && !string.IsNullOrWhiteSpace(alert.MoedaAlvo);
+
+    private static Guid RequiredId(Guid id, string parameterName) =>
+        id == Guid.Empty ? throw new ArgumentException("O identificador deve ser um UUID válido.", parameterName) : id;
+
+    private static void ValidateAlertCondition(string condition)
+    {
+        if (condition is not PriceGreaterThanOrEqual and not PriceLessThanOrEqual)
+        {
+            throw new ArgumentOutOfRangeException(nameof(condition), "Condição de alerta não reconhecida.");
+        }
+    }
+
+    private static void ValidateTargetValue(decimal value)
+    {
+        if (value <= 0) throw new ArgumentOutOfRangeException(nameof(value), "O preço-alvo deve ser maior que zero.");
+    }
 
     private async Task SendWithoutResponseAsync(HttpMethod method, string path, object? body, bool authenticated, CancellationToken cancellationToken)
     {

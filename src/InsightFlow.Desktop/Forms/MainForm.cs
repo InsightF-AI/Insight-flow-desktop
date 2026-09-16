@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Text.Json;
 using InsightFlow.Desktop.Api;
 using InsightFlow.Desktop.Api.Contracts;
 using InsightFlow.Desktop.Presentation;
@@ -15,9 +16,11 @@ internal sealed partial class MainForm : AsyncForm
     private readonly List<WatchlistItemResponse> _watchlist = [];
     private CancellationTokenSource? _searchCancellation;
     private CancellationTokenSource? _detailCancellation;
+    private CancellationTokenSource? _backtestCancellation;
     private int _searchVersion;
     private int _detailVersion;
     private bool _bindingWatchlist;
+    private bool _bindingSignals;
     private bool _watchBusy;
     private bool _endingSession;
 
@@ -55,6 +58,10 @@ internal sealed partial class MainForm : AsyncForm
         };
         _period.SelectedIndexChanged += (_, _) => LoadDetails();
         _refreshDetails.Click += (_, _) => LoadDetails();
+        _signals.SelectionChanged += (_, _) =>
+        {
+            if (!_bindingSignals) LoadSelectedBacktest();
+        };
         _checkConnection.Click += (_, _) => CheckConnection();
         Shown += (_, _) => { CheckConnection(); LoadWatchlist(); };
         FormClosed += (_, _) =>
@@ -64,6 +71,9 @@ internal sealed partial class MainForm : AsyncForm
             _searchResults.Items.Clear();
             _watchGrid.Rows.Clear();
             _history.Rows.Clear();
+            _indicators.Rows.Clear();
+            _signals.Rows.Clear();
+            _backtest.Rows.Clear();
         };
         UpdateActions();
     }
@@ -241,6 +251,7 @@ internal sealed partial class MainForm : AsyncForm
     private void LoadDetails()
     {
         _detailCancellation?.Cancel();
+        _backtestCancellation?.Cancel();
         var version = ++_detailVersion;
         var item = SelectedItem;
         ResetDetails(item);
@@ -248,13 +259,19 @@ internal sealed partial class MainForm : AsyncForm
         var period = (_period.SelectedItem as HistoryPeriod)?.Value ?? "1M";
         SetStatus(_quoteStatus, "Consultando cotação…");
         SetStatus(_historyStatus, "Carregando histórico…");
+        SetStatus(_indicatorStatus, "Carregando indicadores…");
+        SetStatus(_signalStatus, "Carregando sinais…");
         Run(async lifetime =>
         {
             using var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
             _detailCancellation = request;
             try
             {
-                await Task.WhenAll(LoadQuoteAsync(item, version, request.Token), LoadHistoryAsync(item, period, version, request.Token));
+                await Task.WhenAll(
+                    LoadQuoteAsync(item, version, request.Token),
+                    LoadHistoryAsync(item, period, version, request.Token),
+                    LoadIndicatorsAsync(item, version, request.Token),
+                    LoadSignalsAsync(item, version, request.Token));
             }
             finally
             {
@@ -308,6 +325,95 @@ internal sealed partial class MainForm : AsyncForm
         }
     }
 
+    private async Task LoadIndicatorsAsync(WatchlistItemResponse item, int version, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var indicators = await _api.GetIndicatorsAsync(item.Ativo.Id, cancellationToken);
+            if (!IsCurrentDetail(version, cancellationToken)) return;
+            _indicators.Rows.Clear();
+            foreach (var indicator in indicators)
+            {
+                _indicators.Rows.Add(indicator.Tipo, Number(indicator.Valor), indicator.DataCalculo.LocalDateTime,
+                    JsonSummary(indicator.Parametros), JsonSummary(indicator.ValoresAuxiliares));
+            }
+            SetStatus(_indicatorStatus, indicators.Count == 0
+                ? "Nenhum indicador disponível para este ativo."
+                : $"{indicators.Count} indicador(es) recebido(s) da API.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            if (IsCurrentDetail(version, cancellationToken)) HandleError(exception, _indicatorStatus);
+        }
+    }
+
+    private async Task LoadSignalsAsync(WatchlistItemResponse item, int version, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var signals = await _api.GetSignalsAsync(item.Ativo.Id, cancellationToken);
+            if (!IsCurrentDetail(version, cancellationToken)) return;
+            _bindingSignals = true;
+            try
+            {
+                _signals.Rows.Clear();
+                foreach (var signal in signals)
+                {
+                    var index = _signals.Rows.Add(signal.RegraNome,
+                        signal.DataDesativacao is null ? "Ativo" : "Desativado",
+                        signal.DataAtivacao.LocalDateTime, signal.RegraDescricao);
+                    _signals.Rows[index].Tag = signal;
+                }
+                if (_signals.Rows.Count > 0) _signals.CurrentCell = _signals.Rows[0].Cells[0];
+            }
+            finally
+            {
+                _bindingSignals = false;
+            }
+            SetStatus(_signalStatus, signals.Count == 0 ? "Nenhum sinal recente para este ativo." : $"{signals.Count} sinal(is) encontrado(s).");
+            LoadSelectedBacktest();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            if (IsCurrentDetail(version, cancellationToken)) HandleError(exception, _signalStatus);
+        }
+    }
+
+    private void LoadSelectedBacktest()
+    {
+        _backtestCancellation?.Cancel();
+        _backtest.Rows.Clear();
+        var item = SelectedItem;
+        var signal = _signals.CurrentRow?.Tag as SignalResponse;
+        if (item is null || signal is null || !IsCurrentSession)
+        {
+            SetStatus(_backtestStatus, "Selecione um sinal para consultar o backtest.");
+            return;
+        }
+
+        var detailVersion = _detailVersion;
+        SetStatus(_backtestStatus, $"Consultando backtest de {signal.RegraNome}…");
+        Run(async lifetime =>
+        {
+            using var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+            _backtestCancellation = request;
+            try
+            {
+                var result = await _api.GetBacktestAsync(item.Ativo.Id, signal.RegraId, request.Token);
+                if (!IsCurrentDetail(detailVersion, request.Token) || !ReferenceEquals(_signals.CurrentRow?.Tag, signal)) return;
+                _backtest.Rows.Add(result.TotalOcorrencias, NullableNumber(result.RetornoMedio5Pregoes),
+                    NullableNumber(result.RetornoMedio20Pregoes), NullableNumber(result.RetornoMedio60Pregoes));
+                SetStatus(_backtestStatus, "Retornos conforme unidade fornecida pela API; indisponível significa histórico insuficiente.");
+            }
+            finally
+            {
+                if (ReferenceEquals(_backtestCancellation, request)) _backtestCancellation = null;
+            }
+        }, exception => HandleError(exception, _backtestStatus));
+    }
+
     private void ResetDetails(WatchlistItemResponse? item)
     {
         _assetTitle.Text = item?.Ativo.Ticker ?? "Selecione um ativo";
@@ -320,6 +426,12 @@ internal sealed partial class MainForm : AsyncForm
         SetStatus(_quoteStatus, "");
         _history.Rows.Clear();
         SetStatus(_historyStatus, "Selecione um ativo da watchlist para consultar o histórico.");
+        _indicators.Rows.Clear();
+        _signals.Rows.Clear();
+        _backtest.Rows.Clear();
+        SetStatus(_indicatorStatus, "Selecione um ativo para consultar os indicadores.");
+        SetStatus(_signalStatus, "Selecione um ativo para consultar os sinais.");
+        SetStatus(_backtestStatus, "Selecione um sinal para consultar o backtest.");
     }
 
     private void SetWatchBusy(bool busy)
@@ -361,14 +473,35 @@ internal sealed partial class MainForm : AsyncForm
         _session.Clear();
         _searchCancellation?.Cancel();
         _detailCancellation?.Cancel();
+        _backtestCancellation?.Cancel();
         _watchlist.Clear();
         _searchResults.Items.Clear();
         _watchGrid.Rows.Clear();
         _history.Rows.Clear();
+        _indicators.Rows.Clear();
+        _signals.Rows.Clear();
+        _backtest.Rows.Clear();
         Close();
     }
 
     private static string Number(decimal value) => value.ToString("#,0.########", CultureInfo.CurrentCulture);
+
+    private static string NullableNumber(decimal? value) => value is null ? "Indisponível" : Number(value.Value);
+
+    private static string JsonSummary(JsonElement? value)
+    {
+        if (value is null || value.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return "—";
+        var text = value.Value.GetRawText();
+        return text.Length <= 120 ? text : text[..117] + "…";
+    }
+
+    private void OpenAlerts()
+    {
+        if (!IsCurrentSession) return;
+        using var form = new AlertsForm(_api, _session);
+        form.ShowDialog(this);
+        if (form.SessionExpired) EndSession(true);
+    }
 
     private static void SetStatus(Label label, string text, bool error = false)
     {

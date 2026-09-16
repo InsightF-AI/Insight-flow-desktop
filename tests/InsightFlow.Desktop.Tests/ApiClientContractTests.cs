@@ -118,6 +118,104 @@ public sealed class ApiClientContractTests
     }
 
     [Fact]
+    public async Task Technical_analysis_preserves_nullable_values_and_uses_documented_paths()
+    {
+        var ruleId = Guid.Parse("a1a1a1a1-0000-0000-0000-000000000001");
+        var signalId = Guid.Parse("a1a1a1a1-0000-0000-0000-000000000010");
+        var responses = new Queue<HttpResponseMessage>(
+        [
+            RecordingHttpMessageHandler.Json("""[{"tipo":"RSI","parametros":{"periodo":14},"data_calculo":"2026-09-16T12:00:00Z","valor":"29.5","valores_auxiliares":null}]"""),
+            RecordingHttpMessageHandler.Json($$"""[{"id":"{{signalId}}","ativo_id":"{{AssetId}}","regra_id":"{{ruleId}}","regra_nome":"Sobrevenda RSI","regra_descricao":"RSI abaixo de 30","data_ativacao":"2026-09-16T12:00:00Z","contexto":{"rsi":29.5},"data_desativacao":null}]"""),
+            RecordingHttpMessageHandler.Json($$"""{"regra_id":"{{ruleId}}","ativo_id":"{{AssetId}}","total_ocorrencias":3,"retorno_medio_5_pregoes":null,"retorno_medio_20_pregoes":"1.25","retorno_medio_60_pregoes":null}""")
+        ]);
+        var handler = new RecordingHttpMessageHandler((_, _) => Task.FromResult(responses.Dequeue()));
+        using var http = CreateHttpClient(handler);
+        var session = new UserSession();
+        session.Start("analysis-test-token");
+        var api = new InsightFlowApiClient(http, session);
+
+        var indicators = await api.GetIndicatorsAsync(AssetId);
+        var signals = await api.GetSignalsAsync(AssetId);
+        var backtest = await api.GetBacktestAsync(AssetId, ruleId);
+
+        Assert.Equal(29.5m, Assert.Single(indicators).Valor);
+        Assert.Null(Assert.Single(indicators).ValoresAuxiliares);
+        Assert.Null(Assert.Single(signals).DataDesativacao);
+        Assert.Null(backtest.RetornoMedio5Pregoes);
+        Assert.Equal(1.25m, backtest.RetornoMedio20Pregoes);
+        Assert.Equal($"/api/v1/ativos/{AssetId}/indicadores", handler.Requests[0].Uri.AbsolutePath);
+        Assert.Equal($"/api/v1/ativos/{AssetId}/sinais", handler.Requests[1].Uri.AbsolutePath);
+        Assert.Equal($"/api/v1/ativos/{AssetId}/sinais/{ruleId}/backtest", handler.Requests[2].Uri.AbsolutePath);
+        Assert.All(handler.Requests, request => Assert.Equal("Bearer analysis-test-token", request.Authorization));
+    }
+
+    [Fact]
+    public async Task Creating_alert_sends_only_the_documented_fields()
+    {
+        var handler = RecordingHttpMessageHandler.ReturningJson(AlertJson(), HttpStatusCode.Created);
+        using var http = CreateHttpClient(handler);
+        var api = new InsightFlowApiClient(http, new UserSession());
+
+        await api.CreateAlertAsync("PETR4", InsightFlowApiClient.PriceGreaterThanOrEqual, 42.50m);
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal("/api/v1/alertas", request.Uri.AbsolutePath);
+        using var body = JsonDocument.Parse(Assert.IsType<string>(request.Body));
+        Assert.Equal("PETR4", body.RootElement.GetProperty("ticker").GetString());
+        Assert.Equal("PRECO_MAIOR_IGUAL", body.RootElement.GetProperty("tipo_condicao").GetString());
+        Assert.Equal(42.50m, body.RootElement.GetProperty("valor_alvo").GetDecimal());
+        Assert.Equal(3, body.RootElement.EnumerateObject().Count());
+    }
+
+    [Fact]
+    public async Task Updating_alert_uses_ativo_for_enabled_state_and_omits_unchanged_fields()
+    {
+        var alertId = Guid.Parse("ee838914-2761-4f45-a8f3-f25bab79042f");
+        var handler = RecordingHttpMessageHandler.ReturningJson(AlertJson(alertId));
+        using var http = CreateHttpClient(handler);
+        var api = new InsightFlowApiClient(http, new UserSession());
+
+        await api.UpdateAlertAsync(alertId, ativo: false);
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Patch, request.Method);
+        Assert.Equal($"/api/v1/alertas/{alertId}", request.Uri.AbsolutePath);
+        using var body = JsonDocument.Parse(Assert.IsType<string>(request.Body));
+        Assert.False(body.RootElement.GetProperty("ativo").GetBoolean());
+        Assert.Single(body.RootElement.EnumerateObject());
+    }
+
+    [Fact]
+    public async Task Invalid_alert_value_is_rejected_before_sending_a_request()
+    {
+        var handler = RecordingHttpMessageHandler.ReturningJson(AlertJson());
+        using var http = CreateHttpClient(handler);
+        var api = new InsightFlowApiClient(http, new UserSession());
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            api.CreateAlertAsync("PETR4", InsightFlowApiClient.PriceLessThanOrEqual, 0));
+
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task Deleting_alert_accepts_204_without_reading_json()
+    {
+        var alertId = Guid.Parse("ee838914-2761-4f45-a8f3-f25bab79042f");
+        var handler = new RecordingHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent)));
+        using var http = CreateHttpClient(handler);
+        var api = new InsightFlowApiClient(http, new UserSession());
+
+        await api.DeleteAlertAsync(alertId);
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Delete, request.Method);
+        Assert.Equal($"/api/v1/alertas/{alertId}", request.Uri.AbsolutePath);
+    }
+
+    [Fact]
     public async Task Adding_watchlist_entry_sends_only_the_ticker()
     {
         var handler = RecordingHttpMessageHandler.ReturningJson(WatchlistItemJson(), HttpStatusCode.Created);
@@ -288,6 +386,28 @@ public sealed class ApiClientContractTests
           },
           "notificar": false,
           "adicionado_em": "2026-09-16T12:00:00Z"
+        }
+        """;
+
+    private static string AlertJson(Guid? alertId = null) => $$"""
+        {
+          "id": "{{alertId ?? Guid.Parse("ee838914-2761-4f45-a8f3-f25bab79042f")}}",
+          "ativo": {
+            "id": "{{AssetId}}",
+            "ticker": "PETR4",
+            "nome": "Petrobras",
+            "tipo": "ACAO",
+            "setor": "Petróleo",
+            "moeda": "BRL"
+          },
+          "tipo_condicao": "PRECO_MAIOR_IGUAL",
+          "valor_alvo": 42.50,
+          "moeda_alvo": "BRL",
+          "habilitado": true,
+          "ultimo_estado": "NAO_DISPARADO",
+          "disparado_em": null,
+          "criado_em": "2026-09-16T12:00:00Z",
+          "atualizado_em": "2026-09-16T12:00:00Z"
         }
         """;
 }

@@ -12,6 +12,18 @@ Proposta baseada nos documentos recebidos, em 16/09/2026. Os marcos abaixo organ
 
 Após essa análise, foi iniciada a estrutura executável descrita no [README](../README.md): solução .NET 10, cliente HTTP, sessão, telas do primeiro fluxo e testes com respostas controladas. A disponibilidade do backend da equipe continua sem validação; os marcos abaixo não devem ser considerados integralmente concluídos só pela existência de código local.
 
+### Situação da estrutura local em 16/09/2026
+
+| Área | Situação local | Limite atual |
+|---|---|---|
+| Base, autenticação e sessão | Implementada e coberta por testes de contrato | Falta executar contra uma instância real da API |
+| Busca, watchlist, cotação e histórico | Implementados na interface | Falta validar dados, latência e erros do backend da equipe |
+| Indicadores, sinais e backtest | Implementados em abas no detalhe do ativo | Unidade dos retornos e schemas auxiliares ainda precisam de confirmação |
+| Alertas de preço | CRUD inicial implementado, incluindo PATCH parcial e exclusão 204 | Avaliação e entrega de notificações dependem do backend |
+| Portfólio, IA e notificações nativas | Planejados | Não há contrato suficiente na referência recebida |
+
+Com isso, a estrutura inicial local fica fechada para integração: os 16 endpoints de recurso e o health check descritos na referência possuem representação no cliente, e os fluxos com interface usam dados da API sem fixtures no código de produção.
+
 ## 2. Sequência de entregas
 
 | Marco | Trabalho | Critério de aceite |

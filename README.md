@@ -27,12 +27,14 @@ A variável de ambiente tem precedência sobre [appsettings.json](src/InsightFlo
 
 1. Cadastrar uma conta ou entrar com e-mail e senha.
 2. Buscar um ativo e adicioná-lo explicitamente à watchlist.
-3. Selecionar um item para consultar cotação e histórico OHLCV em tabela, escolhendo o período.
-4. Alterar a preferência de notificação, remover um item ou encerrar a sessão.
+3. Selecionar um item para consultar cotação, histórico OHLCV, indicadores técnicos e sinais.
+4. Selecionar um sinal para consultar ocorrências e retornos do backtest, preservando resultados indisponíveis.
+5. Criar, listar, editar, habilitar/desabilitar e excluir alertas de preço.
+6. Alterar a preferência de notificação da watchlist, remover um item ou encerrar a sessão.
 
 O fluxo usa endpoints reais, com erros e indisponibilidade apresentados na interface. A integração com um servidor da equipe ainda precisa ser validada. A preferência de notificação pode ser salva; entrega de notificações depende de contrato adicional do backend.
 
-Ainda pendentes: gráficos, indicadores/sinais/backtest na interface, CRUD de alertas de preço, entrega de notificações, portfólio, IA e empacotamento para distribuição. Consulte o plano para as dependências de cada módulo.
+Ainda pendentes: validação contra a API executada pela equipe, gráficos, entrega de notificações no Windows, portfólio, IA e empacotamento para distribuição. Consulte o plano para as dependências de cada módulo.
 
 ## Estrutura
 
@@ -48,7 +50,7 @@ tests/InsightFlow.Desktop.Tests/
 docs/
 ```
 
-O aplicativo usa os componentes do .NET/Windows Forms, sem bibliotecas externas em runtime. Os testes usam xUnit com respostas HTTP controladas; eles não acessam contas reais.
+O aplicativo usa os componentes do .NET/Windows Forms, sem bibliotecas externas em runtime. Os testes usam xUnit com respostas HTTP controladas; eles não acessam contas reais. Os contratos automatizados cobrem autenticação, sessão, busca, watchlist, análise técnica, alertas, erros, cancelamento e respostas sem corpo.
 
 ## Validar
 
@@ -75,6 +77,6 @@ Repositório: [InsightF-AI/Insight-flow-desktop](https://github.com/InsightF-AI/
 
 ## Próximo marco
 
-Validar o primeiro fluxo com o backend da equipe, confirmando a URL da API e o contrato correspondente à versão em execução. Em seguida, implementar gráficos e a apresentação de indicadores, sinais e backtest.
+Validar o fluxo completo já estruturado com o backend da equipe, confirmando a URL da API e o contrato correspondente à versão em execução. Em seguida, implementar os gráficos com base na granularidade e nas séries efetivamente disponíveis.
 
 Portfólio, IA e notificações continuam no escopo do projeto; sua integração depende de contratos que não aparecem na referência recebida.

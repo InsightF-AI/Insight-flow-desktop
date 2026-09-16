@@ -28,6 +28,12 @@ internal sealed partial class MainForm
     private readonly ComboBox _period = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 135 };
     private readonly Button _refreshDetails = UiTheme.Button("Atualizar &dados");
     private readonly DataGridView _history = UiTheme.Grid();
+    private readonly DataGridView _indicators = UiTheme.Grid();
+    private readonly DataGridView _signals = UiTheme.Grid();
+    private readonly DataGridView _backtest = UiTheme.Grid();
+    private readonly Label _indicatorStatus = UiTheme.Label("Selecione um ativo para consultar os indicadores.", 9);
+    private readonly Label _signalStatus = UiTheme.Label("Selecione um ativo para consultar os sinais.", 9);
+    private readonly Label _backtestStatus = UiTheme.Label("Selecione um sinal para consultar o backtest.", 9);
 
     private void BuildLayout(Uri apiUrl)
     {
@@ -110,7 +116,8 @@ internal sealed partial class MainForm
         AddNavButton(nav, "  Visão geral", true);
         AddUnavailableNav(nav, "  Portfólio");
         AddNavHeading(nav, "MONITORAMENTO");
-        AddUnavailableNav(nav, "  Alertas");
+        var alertsNav = AddNavButton(nav, "  Alertas");
+        alertsNav.Click += (_, _) => OpenAlerts();
         var searchNav = AddNavButton(nav, "  Buscar ativos");
         searchNav.Click += (_, _) => _search.Focus();
         AddNavHeading(nav, "FERRAMENTAS");
@@ -283,8 +290,26 @@ internal sealed partial class MainForm
         container.RowStyles.Add(new RowStyle(SizeType.Absolute, 375));
         container.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         container.Controls.Add(BuildQuoteCard(), 0, 0);
-        container.Controls.Add(BuildHistoryCard(), 0, 1);
+        container.Controls.Add(BuildAnalysisTabs(), 0, 1);
         return container;
+    }
+
+    private Control BuildAnalysisTabs()
+    {
+        var tabs = new TabControl
+        {
+            Dock = DockStyle.Fill,
+            Font = UiTheme.Font(9.5f, true),
+            Padding = new Point(16, 6)
+        };
+        var history = new TabPage("Histórico") { BackColor = UiTheme.Background, Padding = new Padding(0, 8, 0, 0) };
+        var indicators = new TabPage("Indicadores") { BackColor = UiTheme.Background, Padding = new Padding(0, 8, 0, 0) };
+        var signals = new TabPage("Sinais e backtest") { BackColor = UiTheme.Background, Padding = new Padding(0, 8, 0, 0) };
+        history.Controls.Add(BuildHistoryCard());
+        indicators.Controls.Add(BuildIndicatorCard());
+        signals.Controls.Add(BuildSignalCard());
+        tabs.TabPages.AddRange([history, indicators, signals]);
+        return tabs;
     }
 
     private Control BuildQuoteCard()
@@ -364,6 +389,51 @@ internal sealed partial class MainForm
         panel.Controls.Add(_history, 0, 1);
         _historyStatus.Dock = DockStyle.Fill;
         panel.Controls.Add(_historyStatus, 0, 2);
+        return panel;
+    }
+
+    private Control BuildIndicatorCard()
+    {
+        var panel = Card(14);
+        panel.RowCount = 3;
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.Controls.Add(SectionTitle("INDICADORES TÉCNICOS", "Valores recentes calculados pela API"), 0, 0);
+        foreach (var (name, weight) in new[] { ("Tipo", 70f), ("Valor", 75f), ("Cálculo", 95f), ("Parâmetros", 150f), ("Auxiliares", 160f) })
+        {
+            _indicators.Columns.Add(new DataGridViewTextBoxColumn { Name = name, HeaderText = name.ToUpperInvariant(), FillWeight = weight });
+        }
+        _indicators.AccessibleName = "Indicadores técnicos do ativo";
+        panel.Controls.Add(_indicators, 0, 1);
+        panel.Controls.Add(_indicatorStatus, 0, 2);
+        return panel;
+    }
+
+    private Control BuildSignalCard()
+    {
+        var panel = Card(14);
+        panel.RowCount = 5;
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 60));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.Controls.Add(SectionTitle("SINAIS", "Selecione uma regra para consultar seu backtest"), 0, 0);
+        foreach (var (name, weight) in new[] { ("Regra", 115f), ("Estado", 70f), ("Ativação", 90f), ("Descrição", 180f) })
+        {
+            _signals.Columns.Add(new DataGridViewTextBoxColumn { Name = name, HeaderText = name.ToUpperInvariant(), FillWeight = weight });
+        }
+        _signals.AccessibleName = "Sinais técnicos do ativo";
+        panel.Controls.Add(_signals, 0, 1);
+        panel.Controls.Add(_signalStatus, 0, 2);
+        foreach (var (name, weight) in new[] { ("Ocorrências", 80f), ("5 pregões", 90f), ("20 pregões", 90f), ("60 pregões", 90f) })
+        {
+            _backtest.Columns.Add(new DataGridViewTextBoxColumn { Name = name, HeaderText = name.ToUpperInvariant(), FillWeight = weight });
+        }
+        _backtest.AccessibleName = "Resultado de backtest do sinal selecionado";
+        panel.Controls.Add(_backtest, 0, 3);
+        panel.Controls.Add(_backtestStatus, 0, 4);
         return panel;
     }
 
