@@ -1,0 +1,29 @@
+# .NET / IDE
+**/bin/
+**/obj/
+.vs/
+.idea/
+*.user
+*.suo
+*.sln.docstates
+
+# Tests, local tools and distribution
+**/TestResults/
+coverage/
+artifacts/
+.tools/
+.nuget/
+.dotnet/
+
+# Credentials and local state
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+*.log
+*.pfx
+*.p12
+
+# Operating system
+Thumbs.db
+.DS_Store
