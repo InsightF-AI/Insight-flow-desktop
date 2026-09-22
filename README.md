@@ -27,14 +27,14 @@ A variável de ambiente tem precedência sobre [appsettings.json](src/InsightFlo
 
 1. Cadastrar uma conta ou entrar com e-mail e senha.
 2. Buscar um ativo e adicioná-lo explicitamente à watchlist.
-3. Selecionar um item para consultar cotação, histórico OHLCV, indicadores técnicos e sinais.
+3. Selecionar um item para consultar cotação, gráfico de fechamento e volume, tabela OHLCV, indicadores técnicos e sinais.
 4. Selecionar um sinal para consultar ocorrências e retornos do backtest, preservando resultados indisponíveis.
 5. Criar, listar, editar, habilitar/desabilitar e excluir alertas de preço.
 6. Alterar a preferência de notificação da watchlist, remover um item ou encerrar a sessão.
 
 O fluxo usa endpoints reais, com erros e indisponibilidade apresentados na interface. A integração com um servidor da equipe ainda precisa ser validada. A preferência de notificação pode ser salva; entrega de notificações depende de contrato adicional do backend.
 
-Ainda pendentes: validação contra a API executada pela equipe, gráficos, entrega de notificações no Windows, portfólio, IA e empacotamento para distribuição. Consulte o plano para as dependências de cada módulo.
+Ainda pendentes: validação contra a API executada pela equipe, entrega de notificações no Windows, portfólio, IA e empacotamento para distribuição. Consulte o plano para as dependências de cada módulo.
 
 ## Estrutura
 
@@ -77,6 +77,8 @@ Repositório: [InsightF-AI/Insight-flow-desktop](https://github.com/InsightF-AI/
 
 ## Próximo marco
 
-Validar o fluxo completo já estruturado com o backend da equipe, confirmando a URL da API e o contrato correspondente à versão em execução. Em seguida, implementar os gráficos com base na granularidade e nas séries efetivamente disponíveis.
+Validar o fluxo completo já estruturado com o backend da equipe, confirmando a URL da API e o contrato correspondente à versão em execução. O gráfico inicial usa os registros OHLCV recebidos, ordenados cronologicamente, com consulta por mouse e teclado. Candles, zoom e sobreposição de séries de indicadores ficam para uma etapa posterior.
 
 Portfólio, IA e notificações continuam no escopo do projeto; sua integração depende de contratos que não aparecem na referência recebida.
+
+O gráfico preserva o horário/fuso recebido, exibe um ponto quando há somente um registro e trata séries constantes, vazias e falhas de consulta. O eixo horizontal representa registros com espaçamento uniforme; não presume uma frequência de pregão. A tabela mantém os valores exatos para consulta.

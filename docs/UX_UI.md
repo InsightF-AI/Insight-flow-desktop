@@ -23,9 +23,9 @@ O tema escuro é a base inicial. O web também oferece tema claro; essa alternâ
 | Busca global na topbar | Busca por ticker/nome usando o endpoint documentado |
 | Dashboard com vários cards e dados mockados | Watchlist, cotação e OHLCV reais; cards sem dados reais não são exibidos |
 | Card de ativo com preço e variação | Resumo do ativo selecionado, com moeda, mínima, máxima e volume |
-| Gráfico e períodos rápidos | Período selecionável e tabela OHLCV nesta etapa; gráfico entra após escolher a biblioteca |
+| Gráfico e períodos rápidos | Período selecionável, gráfico de fechamento/volume e tabela OHLCV; desenho nativo do Windows Forms |
 | Feedback de queries e mutations | Mensagens de carregamento, vazio, erro e confirmação junto ao componente afetado |
-| Navegação para Portfólio, Alertas e Chat IA | Itens visuais desabilitados até existirem endpoints confirmados |
+| Navegação para Portfólio, Alertas e Chat IA | Alertas abre o CRUD; Portfólio e Chat IA aguardam contratos |
 
 ## Fluxo principal
 
@@ -50,8 +50,8 @@ O tema escuro é a base inicial. O web também oferece tema claro; essa alternâ
 ## Pendências visuais
 
 - incorporar o ícone oficial quando o uso e o formato do ativo forem confirmados para o executável;
-- escolher LiveCharts2 ou ScottPlot e validar candles, volume, zoom e overlays;
+- avaliar biblioteca para candles, zoom e sobreposição de séries; fechamento e volume já têm visualização nativa;
 - definir comportamento da sidebar recolhível no desktop;
 - validar tema claro e persistência da preferência;
 - validar a interface em 125%, 150% e 200% de escala do Windows;
-- desenhar estados de Portfólio, Alertas, Chat IA e Configurações quando seus contratos estiverem disponíveis.
+- desenhar estados de Portfólio, Chat IA e Configurações quando seus contratos estiverem disponíveis.

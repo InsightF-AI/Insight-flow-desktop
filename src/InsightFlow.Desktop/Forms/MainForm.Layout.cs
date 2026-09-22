@@ -28,6 +28,7 @@ internal sealed partial class MainForm
     private readonly ComboBox _period = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 135 };
     private readonly Button _refreshDetails = UiTheme.Button("Atualizar &dados");
     private readonly DataGridView _history = UiTheme.Grid();
+    private readonly PriceHistoryChart _historyChart = new();
     private readonly DataGridView _indicators = UiTheme.Grid();
     private readonly DataGridView _signals = UiTheme.Grid();
     private readonly DataGridView _backtest = UiTheme.Grid();
@@ -287,7 +288,7 @@ internal sealed partial class MainForm
             Margin = Padding.Empty
         };
         container.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        container.RowStyles.Add(new RowStyle(SizeType.Absolute, 375));
+        container.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         container.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         container.Controls.Add(BuildQuoteCard(), 0, 0);
         container.Controls.Add(BuildAnalysisTabs(), 0, 1);
@@ -315,10 +316,12 @@ internal sealed partial class MainForm
     private Control BuildQuoteCard()
     {
         var panel = Card(18);
+        panel.AutoSize = true;
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         panel.Margin = new Padding(0, 0, 0, 12);
         panel.RowCount = 7;
         for (var i = 0; i < panel.RowCount; i++) panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var header = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, BackColor = Color.Transparent };
+        var header = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, BackColor = Color.Transparent };
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.Controls.Add(_assetTitle, 0, 0);
@@ -355,7 +358,7 @@ internal sealed partial class MainForm
         historyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         historyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         historyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        historyHeader.Controls.Add(SectionTitle("HISTÓRICO OHLCV", "Dados conforme recebidos da API"), 0, 0);
+        historyHeader.Controls.Add(SectionTitle("HISTÓRICO", "Fechamento e volume por registro"), 0, 0);
         _period.AccessibleName = "Período do histórico";
         _period.Margin = new Padding(0, 5, 10, 0);
         _period.DisplayMember = nameof(HistoryPeriod.Label);
@@ -386,7 +389,13 @@ internal sealed partial class MainForm
                 }
             });
         }
-        panel.Controls.Add(_history, 0, 1);
+        var views = new TabControl { Dock = DockStyle.Fill };
+        var chartPage = new TabPage("Gráfico") { BackColor = UiTheme.Surface };
+        var tablePage = new TabPage("Tabela OHLCV") { BackColor = UiTheme.Surface };
+        chartPage.Controls.Add(_historyChart);
+        tablePage.Controls.Add(_history);
+        views.TabPages.AddRange([chartPage, tablePage]);
+        panel.Controls.Add(views, 0, 1);
         _historyStatus.Dock = DockStyle.Fill;
         panel.Controls.Add(_historyStatus, 0, 2);
         return panel;

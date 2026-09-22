@@ -15,7 +15,7 @@ internal sealed class AlertsForm : AsyncForm
     private readonly DataGridView _grid = UiTheme.Grid();
     private readonly TextBox _ticker = new() { MaxLength = 20, CharacterCasing = CharacterCasing.Upper, Dock = DockStyle.Fill };
     private readonly ComboBox _condition = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
-    private readonly NumericUpDown _target = new() { DecimalPlaces = 8, Minimum = 0.00000001m, Maximum = 1_000_000_000m, ThousandsSeparator = true, Dock = DockStyle.Fill };
+    private readonly NumericUpDown _target = new() { DecimalPlaces = 8, Minimum = 0, Maximum = decimal.MaxValue, ThousandsSeparator = true, Dock = DockStyle.Fill };
     private readonly CheckBox _enabled = new() { Text = "Alerta habilitado", AutoSize = true };
     private readonly Button _newButton = UiTheme.Button("&Novo");
     private readonly Button _saveButton = UiTheme.Button("&Criar alerta", true);
@@ -89,7 +89,7 @@ internal sealed class AlertsForm : AsyncForm
         header.Controls.Add(_refreshButton, 1, 0);
         root.Controls.Add(header, 0, 0);
 
-        var split = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, SplitterDistance = 620, BackColor = UiTheme.Border };
+        var split = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, Size = new Size(930, 450), SplitterDistance = 600, Panel1MinSize = 370, Panel2MinSize = 320, BackColor = UiTheme.Border };
         split.Panel1.BackColor = UiTheme.Surface;
         split.Panel1.Padding = new Padding(12);
         split.Panel1.Controls.Add(_grid);
@@ -193,7 +193,7 @@ internal sealed class AlertsForm : AsyncForm
         _ticker.Text = alert.Ativo.Ticker;
         _ticker.Enabled = false;
         SelectCondition(alert.TipoCondicao);
-        _target.Value = Math.Clamp(alert.ValorAlvo, _target.Minimum, _target.Maximum);
+        _target.Value = alert.ValorAlvo;
         _enabled.Checked = alert.Habilitado;
         _enabled.Enabled = true;
         _saveButton.Text = "&Salvar alterações";
@@ -221,9 +221,9 @@ internal sealed class AlertsForm : AsyncForm
     {
         if (_busy || !IsCurrentSession) return;
         var condition = (_condition.SelectedItem as ConditionChoice)?.Value;
-        if (string.IsNullOrWhiteSpace(_ticker.Text) || condition is null)
+        if (string.IsNullOrWhiteSpace(_ticker.Text) || condition is null || _target.Value <= 0)
         {
-            SetStatus("Informe o ticker e a condição do alerta.", true);
+            SetStatus("Informe o ticker, a condição e um preço-alvo maior que zero.", true);
             return;
         }
 
@@ -253,12 +253,10 @@ internal sealed class AlertsForm : AsyncForm
                 }
                 if (IsCurrentSession)
                 {
-                    var alerts = await _api.GetAlertsAsync(cancellationToken);
-                    if (IsCurrentSession)
-                    {
-                        BindAlerts(alerts, saved.Id);
-                        SetStatus($"Alerta de {saved.Ativo.Ticker} salvo.");
-                    }
+                    var alerts = _grid.Rows.Cast<DataGridViewRow>().Select(row => (AlertResponse)row.Tag!)
+                        .Where(alert => alert.Id != saved.Id).Append(saved).ToArray();
+                    BindAlerts(alerts, saved.Id);
+                    SetStatus($"Alerta de {saved.Ativo.Ticker} salvo.");
                 }
             }
             finally
@@ -283,12 +281,10 @@ internal sealed class AlertsForm : AsyncForm
                 await _api.DeleteAlertAsync(selected.Id, cancellationToken);
                 if (IsCurrentSession)
                 {
-                    var alerts = await _api.GetAlertsAsync(cancellationToken);
-                    if (IsCurrentSession)
-                    {
-                        BindAlerts(alerts, null);
-                        SetStatus($"Alerta de {selected.Ativo.Ticker} excluído.");
-                    }
+                    var alerts = _grid.Rows.Cast<DataGridViewRow>().Select(row => (AlertResponse)row.Tag!)
+                        .Where(alert => alert.Id != selected.Id).ToArray();
+                    BindAlerts(alerts, null);
+                    SetStatus($"Alerta de {selected.Ativo.Ticker} excluído.");
                 }
             }
             finally

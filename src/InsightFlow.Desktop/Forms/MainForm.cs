@@ -259,6 +259,7 @@ internal sealed partial class MainForm : AsyncForm
         var period = (_period.SelectedItem as HistoryPeriod)?.Value ?? "1M";
         SetStatus(_quoteStatus, "Consultando cotação…");
         SetStatus(_historyStatus, "Carregando histórico…");
+        _historyChart.ShowMessage("Carregando histórico…");
         SetStatus(_indicatorStatus, "Carregando indicadores…");
         SetStatus(_signalStatus, "Carregando sinais…");
         Run(async lifetime =>
@@ -292,7 +293,7 @@ internal sealed partial class MainForm : AsyncForm
             var currency = item.Ativo.Moeda;
             _quotePrice.Text = $"{currency} {Number(quote.Preco)}";
             _quoteChange.Text = $"Variação: {quote.Variacao:+0.########;-0.########;0}  ({quote.VariacaoPercentual:+0.##;-0.##;0}%)";
-            _quoteChange.ForeColor = quote.Variacao < 0 ? UiTheme.Error : UiTheme.Navy;
+            _quoteChange.ForeColor = quote.Variacao < 0 ? UiTheme.Down : quote.Variacao > 0 ? UiTheme.Up : UiTheme.Ink;
             _quoteRange.Text = $"Mín. {currency} {Number(quote.MinimaDia)}  /  Máx. {currency} {Number(quote.MaximaDia)}";
             _quoteVolume.Text = $"Volume: {Number(quote.Volume)}";
             SetStatus(_quoteStatus, $"Consulta realizada às {DateTimeOffset.Now:HH:mm:ss}. Horário de mercado não informado.");
@@ -311,6 +312,7 @@ internal sealed partial class MainForm : AsyncForm
             var points = await _api.GetHistoryAsync(item.Ativo.Id, period, cancellationToken);
             if (!IsCurrentDetail(version, cancellationToken)) return;
             _history.Rows.Clear();
+            _historyChart.SetData(points, item.Ativo.Moeda);
             foreach (var point in points.OrderByDescending(point => point.Data))
             {
                 var index = _history.Rows.Add(point.Data.DateTime, point.Abertura, point.Maxima, point.Minima, point.Fechamento, point.Volume);
@@ -321,7 +323,11 @@ internal sealed partial class MainForm : AsyncForm
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception exception)
         {
-            if (IsCurrentDetail(version, cancellationToken)) HandleError(exception, _historyStatus);
+            if (IsCurrentDetail(version, cancellationToken))
+            {
+                _historyChart.ShowMessage(UiErrors.Message(exception));
+                HandleError(exception, _historyStatus);
+            }
         }
     }
 
@@ -407,6 +413,12 @@ internal sealed partial class MainForm : AsyncForm
                     NullableNumber(result.RetornoMedio20Pregoes), NullableNumber(result.RetornoMedio60Pregoes));
                 SetStatus(_backtestStatus, "Retornos conforme unidade fornecida pela API; indisponível significa histórico insuficiente.");
             }
+            catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+            catch (Exception exception)
+            {
+                if (IsCurrentDetail(detailVersion, request.Token) && ReferenceEquals(_signals.CurrentRow?.Tag, signal))
+                    HandleError(exception, _backtestStatus);
+            }
             finally
             {
                 if (ReferenceEquals(_backtestCancellation, request)) _backtestCancellation = null;
@@ -425,6 +437,7 @@ internal sealed partial class MainForm : AsyncForm
         _quoteVolume.Text = "Volume: —";
         SetStatus(_quoteStatus, "");
         _history.Rows.Clear();
+        _historyChart.ShowMessage("Selecione um ativo para consultar o histórico.");
         SetStatus(_historyStatus, "Selecione um ativo da watchlist para consultar o histórico.");
         _indicators.Rows.Clear();
         _signals.Rows.Clear();

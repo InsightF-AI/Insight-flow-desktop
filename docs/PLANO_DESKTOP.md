@@ -100,3 +100,14 @@ Testes automatizados devem cobrir parsing, sessão e coordenação dos fluxos; t
 Proposta: implementar cada marco em uma branch curta, com descrição do comportamento entregue e evidência de validação. Alinhar com a organização a branch padrão, revisão de PRs e convenções antes do primeiro envio. O repositório não tinha histórico para inferir esses padrões.
 
 Não versionar senhas, tokens, arquivos de configuração com segredos, logs pessoais ou resultados de build. Ao criar a solução, adicionar um `.gitignore` apropriado e configuração de exemplo sem credenciais. Publicação de commits e abertura de PRs não ocorreram nesta etapa de documentação.
+
+## Evolução local em 20/09/2026
+
+- Gráfico nativo de fechamento e volume, ligado ao mesmo histórico da tabela OHLCV, com consulta por mouse/setas e suporte a séries vazias, constantes e de um registro.
+- Cartão de cotação com altura automática para ampliar a área de análise. Datas do gráfico preservam o fuso recebido; o eixo horizontal usa registros igualmente espaçados, sem deduzir frequência de pregão.
+- Backtests cancelados ou ultrapassados por outra seleção não alteram o estado atual da tela.
+- Criação/edição de alerta atualiza a lista com a resposta da própria operação; exclusão remove o item confirmado. Uma segunda consulta não pode transformar um salvamento bem-sucedido em mensagem de falha. Atualização manual continua disponível.
+- O preço-alvo preserva a faixa decimal do contrato, sem limitar silenciosamente valores carregados a um bilhão.
+- A configuração encontrada continua em localhost:8000, sem URL alternativa no ambiente; o health check local não respondeu. Validação com backend real permanece pendente.
+
+Próximo aceite: executar cadastro/login, watchlist, períodos, análise técnica e alertas contra a versão da API da equipe. Depois, validar escala do Windows e distribuição; candles, zoom e séries históricas de indicadores são evoluções do gráfico inicial.
