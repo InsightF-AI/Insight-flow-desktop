@@ -111,3 +111,21 @@ Não versionar senhas, tokens, arquivos de configuração com segredos, logs pes
 - A configuração encontrada continua em localhost:8000, sem URL alternativa no ambiente; o health check local não respondeu. Validação com backend real permanece pendente.
 
 Próximo aceite: executar cadastro/login, watchlist, períodos, análise técnica e alertas contra a versão da API da equipe. Depois, validar escala do Windows e distribuição; candles, zoom e séries históricas de indicadores são evoluções do gráfico inicial.
+
+## Evolução local em 30/09/2026
+
+Contrato conferido no código da branch `develop` do backend (commit `a175cb6`), sem alterar o backend. Detalhes em [Integração com a API](INTEGRACAO_API.md#atualização-de-30092026-código-do-backend-conferido).
+
+- **Correção:** `ultimo_estado` do alerta passou a ser lido como booleano. A lista de alertas mostra "Monitorando", "Condição atingida" ou "Desabilitado".
+- **Notificações (marco 5, parcial):** tela com filtro de não lidas, detalhes (incluindo o texto do resumo diário e o aviso legal) e ação de marcar como lida. A janela principal consulta as não lidas a cada 2 minutos, mostra o contador no menu e avisa pela bandeja do Windows. A primeira consulta da sessão gera um único aviso resumido; logout interrompe a consulta. Não há transporte em tempo real no backend.
+- **Portfólio (marco 6):** registro e exclusão de operações de compra/venda, posições, rentabilidade em BRL, comparação com CDI/Ibovespa e distribuição por classe, setor e moeda. Cada seção trata indisponibilidade de forma independente. Percentuais do backend são frações e são exibidos multiplicados por 100.
+- **IA (marco 6):** aba "Análise IA" no detalhe do ativo, gerada sob demanda para não consumir cota a cada seleção, e tela de Chat IA com histórico limitado a 20 mensagens. O aviso legal retornado pela API é sempre exibido. Bloqueio por guardrail (502), cota excedida e IA desabilitada (503) têm mensagens próprias; uma mensagem que falha não entra no histórico e volta para o campo de texto.
+- **Backtest:** retornos exibidos em %, conforme o cálculo confirmado no backend.
+
+| Área | Situação local | Limite atual |
+|---|---|---|
+| Notificações | Caixa, leitura e aviso na bandeja implementados | Consulta periódica; entrega com o app fechado e fila offline dependem de novo contrato |
+| Portfólio | Operações, posições, rentabilidade, benchmark e distribuição implementados | Posições não informam moeda: o desktop usa a moeda do ativo da watchlist quando disponível |
+| IA | Análise por ativo e chat implementados | Depende de `AI_HABILITADA` e da chave do provedor no servidor |
+
+Testes de contrato foram adicionados para as 11 rotas novas e para o `ultimo_estado` booleano. Nesta máquina, a compilação passou sem erros nem avisos, mas o Smart App Control do Windows bloqueou o carregamento das DLLs recém-compiladas e impediu a execução dos testes. Executar `dotnet test` no CI ou em outra máquina antes de integrar.

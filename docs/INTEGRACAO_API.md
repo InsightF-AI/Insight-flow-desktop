@@ -1,6 +1,38 @@
 # Integração com a API InsightFlow
 
-## Origem e grau de confirmação
+## Atualização de 30/09/2026: código do backend conferido
+
+O código da branch `develop` do repositório `InsightF-AI/Insight-flow-backend` (commit `a175cb6`, 29/09/2026) foi lido para confirmar o contrato. O backend não foi alterado nem executado nesta etapa. A branch `feature/alerta-service`, base da referência HTML abaixo, não existe mais no repositório.
+
+As 16 rotas originais continuam com os mesmos caminhos e campos, com uma correção: **`ultimo_estado` do alerta é booleano** (verdadeiro quando a condição estava satisfeita na última avaliação), não texto. O desktop esperava texto; com o backend atual, toda a lista de alertas seria rejeitada como formato incompatível.
+
+Rotas novas, todas autenticadas, já consumidas pelo desktop:
+
+| Método | Caminho | Entrada e resultado principal |
+| --- | --- | --- |
+| GET | `/notificacoes?apenas_nao_lidas=` | Lista `NotificacaoResponse` (`id`, `ativo_id?`, `tipo`, `mensagem`, `contexto`, `lida`, `criado_em`), da mais recente para a mais antiga. |
+| PATCH | `/notificacoes/{notificacao_id}/lida` | Sem corpo → 200, notificação com `lida: true`. |
+| POST | `/operacoes` | `{ativo_id, tipo: COMPRA\|VENDA, quantidade > 0, preco_unitario > 0, data: AAAA-MM-DD}` → 201. Data futura, venda acima da posição → 422. |
+| GET | `/operacoes` | Lista de operações do usuário. |
+| DELETE | `/operacoes/{operacao_id}` | 204; 422 se a remoção deixar vendas sem saldo. |
+| GET | `/portfolio/posicoes` | Posições abertas; ativos sem cotação são omitidos. Valores na moeda do ativo, exceto `valor_mercado_brl`. |
+| GET | `/portfolio/rentabilidade` | Custos, valores e lucros em BRL; `percentual` é **fração** (0,12 = 12%). |
+| GET | `/portfolio/benchmark?benchmark=CDI\|IBOVESPA` | Rentabilidade da carteira e do índice, **frações**; índice `null` se a fonte estiver indisponível; 404 sem operações. |
+| GET | `/portfolio/distribuicao` | `por_classe`, `por_setor` (`N/A` sem setor), `por_moeda`: **frações** do valor de mercado em BRL. |
+| GET | `/ativos/{ativo_id}/analise` | Texto gerado por IA, `gerado_em`, `modelo`, `em_cache`, `aviso_legal`. 422 com dados insuficientes. |
+| POST | `/chat` | `{mensagens: [{papel: usuario\|assistente, texto}]}`, última do usuário, até 20 mensagens de até 2000 caracteres (padrões configuráveis no servidor) → `{texto, modelo, aviso_legal}`. |
+
+Semânticas confirmadas no código:
+
+- Decimais chegam como **strings JSON** (serialização padrão do Pydantic); o cliente aceita número ou string.
+- Retornos do backtest são **pontos percentuais**: `(preço futuro / preço base − 1) × 100`.
+- Notificações são geradas pelo agendador do backend (sinais a cada 15 min para renda variável e 5 min para cripto; resumo diário às 18h30). Não há push, SSE ou WebSocket: o desktop consulta `/notificacoes?apenas_nao_lidas=true` a cada 2 minutos enquanto a janela principal está aberta e avisa pela bandeja do Windows.
+- Erros de IA: **503** para provedor desabilitado/indisponível ou cota excedida (esta com `Retry-After`); **502** quando a resposta é bloqueada pelo guardrail. A IA fica desabilitada por padrão (`AI_HABILITADA=false`).
+- As operações exigem o UUID interno do ativo, que só existe após o ativo ser cadastrado no backend (por exemplo, ao entrar na watchlist). O desktop oferece para operações os ativos da watchlist.
+
+Pendências que continuam: busca sem `id`, refresh de sessão, recuperação de senha, moeda nas posições, histórico de dividendos e contrato de entrega de notificações em tempo real.
+
+## Origem e grau de confirmação (referência HTML de 15/09/2026)
 
 Este guia resume o arquivo fornecido `api-reference.html`, atualizado em **15/09/2026**, referente à branch **`feature/alerta-service`** do backend. O próprio rodapé declara que a referência ainda não constitui um contrato versionado. As referências abaixo usam as seções do HTML original.
 

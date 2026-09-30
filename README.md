@@ -31,10 +31,13 @@ A variável de ambiente tem precedência sobre [appsettings.json](src/InsightFlo
 4. Selecionar um sinal para consultar ocorrências e retornos do backtest, preservando resultados indisponíveis.
 5. Criar, listar, editar, habilitar/desabilitar e excluir alertas de preço.
 6. Alterar a preferência de notificação da watchlist, remover um item ou encerrar a sessão.
+7. Consultar notificações (sinais, alertas disparados e resumo diário), marcar como lidas e receber avisos na bandeja do Windows enquanto o app está aberto.
+8. Registrar operações simuladas e acompanhar posições, rentabilidade, comparação com CDI/Ibovespa e distribuição da carteira.
+9. Gerar a análise por IA de um ativo e conversar com o Chat IA, sempre com o aviso legal retornado pela API.
 
-O fluxo usa endpoints reais, com erros e indisponibilidade apresentados na interface. A integração com um servidor da equipe ainda precisa ser validada. A preferência de notificação pode ser salva; entrega de notificações depende de contrato adicional do backend.
+O fluxo usa endpoints reais, com erros e indisponibilidade apresentados na interface. O contrato foi conferido no código da branch `develop` do backend em 30/09/2026, mas a integração com um servidor da equipe em execução ainda precisa ser validada. A IA depende de estar habilitada no servidor.
 
-Ainda pendentes: validação contra a API executada pela equipe, entrega de notificações no Windows, portfólio, IA e empacotamento para distribuição. Consulte o plano para as dependências de cada módulo.
+Ainda pendentes: validação contra a API executada pela equipe, notificações com o app fechado, histórico de dividendos e empacotamento para distribuição. Consulte o plano para as dependências de cada módulo.
 
 ## Estrutura
 
@@ -43,14 +46,14 @@ InsightFlow.Desktop.sln
 src/InsightFlow.Desktop/
   Api/                 Cliente HTTP e contratos JSON
   Configuration/       Configuração da API
-  Forms/               Login/cadastro e janela principal
+  Forms/               Login/cadastro, janela principal, alertas, notificações, portfólio e chat
   Presentation/        Apoio à apresentação
   Session/             Sessão mantida em memória
 tests/InsightFlow.Desktop.Tests/
 docs/
 ```
 
-O aplicativo usa os componentes do .NET/Windows Forms, sem bibliotecas externas em runtime. Os testes usam xUnit com respostas HTTP controladas; eles não acessam contas reais. Os contratos automatizados cobrem autenticação, sessão, busca, watchlist, análise técnica, alertas, erros, cancelamento e respostas sem corpo.
+O aplicativo usa os componentes do .NET/Windows Forms, sem bibliotecas externas em runtime. Os testes usam xUnit com respostas HTTP controladas; eles não acessam contas reais. Os contratos automatizados cobrem autenticação, sessão, busca, watchlist, análise técnica, alertas, notificações, portfólio, IA, erros, cancelamento e respostas sem corpo.
 
 ## Validar
 
@@ -79,6 +82,6 @@ Repositório: [InsightF-AI/Insight-flow-desktop](https://github.com/InsightF-AI/
 
 Validar o fluxo completo já estruturado com o backend da equipe, confirmando a URL da API e o contrato correspondente à versão em execução. O gráfico inicial usa os registros OHLCV recebidos, ordenados cronologicamente, com consulta por mouse e teclado. Candles, zoom e sobreposição de séries de indicadores ficam para uma etapa posterior.
 
-Portfólio, IA e notificações continuam no escopo do projeto; sua integração depende de contratos que não aparecem na referência recebida.
+Portfólio, IA e notificações foram integrados a partir do código do backend (`develop`, commit `a175cb6`); ver [Integração com a API](docs/INTEGRACAO_API.md).
 
 O gráfico preserva o horário/fuso recebido, exibe um ponto quando há somente um registro e trata séries constantes, vazias e falhas de consulta. O eixo horizontal representa registros com espaçamento uniforme; não presume uma frequência de pregão. A tabela mantém os valores exatos para consulta.
