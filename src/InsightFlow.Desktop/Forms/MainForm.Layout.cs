@@ -35,6 +35,10 @@ internal sealed partial class MainForm
     private readonly Label _indicatorStatus = UiTheme.Label("Selecione um ativo para consultar os indicadores.", 9);
     private readonly Label _signalStatus = UiTheme.Label("Selecione um ativo para consultar os sinais.", 9);
     private readonly Label _backtestStatus = UiTheme.Label("Selecione um sinal para consultar o backtest.", 9);
+    private readonly Button _analysisButton = UiTheme.Button("&Gerar análise", true);
+    private readonly TextBox _analysisText = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, BorderStyle = BorderStyle.None };
+    private readonly Label _analysisNotice = UiTheme.Label("", 8.5f);
+    private readonly Label _analysisStatus = UiTheme.Label("Selecione um ativo para gerar a análise.", 9);
     private readonly NotifyIcon _tray = new() { Icon = SystemIcons.Information, Text = "InsightFlow" };
     private readonly System.Windows.Forms.Timer _notificationTimer = new() { Interval = NotificationPollMilliseconds };
     private Button _notificationsNav = null!;
@@ -128,7 +132,8 @@ internal sealed partial class MainForm
         var searchNav = AddNavButton(nav, "  Buscar ativos");
         searchNav.Click += (_, _) => _search.Focus();
         AddNavHeading(nav, "FERRAMENTAS");
-        AddUnavailableNav(nav, "  Chat IA");
+        var chatNav = AddNavButton(nav, "  Chat IA");
+        chatNav.Click += (_, _) => OpenChat();
         AddUnavailableNav(nav, "  Configurações");
         sidebar.Controls.Add(nav, 0, 1);
 
@@ -312,11 +317,42 @@ internal sealed partial class MainForm
         var history = new TabPage("Histórico") { BackColor = UiTheme.Background, Padding = new Padding(0, 8, 0, 0) };
         var indicators = new TabPage("Indicadores") { BackColor = UiTheme.Background, Padding = new Padding(0, 8, 0, 0) };
         var signals = new TabPage("Sinais e backtest") { BackColor = UiTheme.Background, Padding = new Padding(0, 8, 0, 0) };
+        var analysis = new TabPage("Análise IA") { BackColor = UiTheme.Background, Padding = new Padding(0, 8, 0, 0) };
         history.Controls.Add(BuildHistoryCard());
         indicators.Controls.Add(BuildIndicatorCard());
         signals.Controls.Add(BuildSignalCard());
-        tabs.TabPages.AddRange([history, indicators, signals]);
+        analysis.Controls.Add(BuildAnalysisCard());
+        tabs.TabPages.AddRange([history, indicators, signals, analysis]);
         return tabs;
+    }
+
+    private Control BuildAnalysisCard()
+    {
+        var panel = Card(14);
+        panel.RowCount = 4;
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var header = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, Margin = new Padding(0, 0, 0, 8), BackColor = Color.Transparent };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        // Geração sob demanda: cada análise consome cota do provedor de IA no backend.
+        header.Controls.Add(SectionTitle("ANÁLISE IA", "Texto gerado pelo backend a partir de cotações, indicadores e sinais"), 0, 0);
+        header.Controls.Add(_analysisButton, 1, 0);
+        panel.Controls.Add(header, 0, 0);
+        _analysisText.BackColor = UiTheme.Surface;
+        _analysisText.ForeColor = UiTheme.Ink;
+        _analysisText.Font = UiTheme.Font(10);
+        _analysisText.AccessibleName = "Análise do ativo gerada por IA";
+        panel.Controls.Add(_analysisText, 0, 1);
+        _analysisNotice.Dock = DockStyle.Fill;
+        _analysisNotice.ForeColor = UiTheme.InkMuted;
+        _analysisNotice.Margin = new Padding(0, 8, 0, 0);
+        panel.Controls.Add(_analysisNotice, 0, 2);
+        _analysisStatus.Dock = DockStyle.Fill;
+        panel.Controls.Add(_analysisStatus, 0, 3);
+        return panel;
     }
 
     private Control BuildQuoteCard()

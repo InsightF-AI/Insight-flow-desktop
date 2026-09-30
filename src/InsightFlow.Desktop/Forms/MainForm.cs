@@ -20,6 +20,7 @@ internal sealed partial class MainForm : AsyncForm
     private CancellationTokenSource? _searchCancellation;
     private CancellationTokenSource? _detailCancellation;
     private CancellationTokenSource? _backtestCancellation;
+    private CancellationTokenSource? _analysisCancellation;
     private int _searchVersion;
     private int _detailVersion;
     private bool _bindingWatchlist;
@@ -69,6 +70,7 @@ internal sealed partial class MainForm : AsyncForm
             if (!_bindingSignals) LoadSelectedBacktest();
         };
         _checkConnection.Click += (_, _) => CheckConnection();
+        _analysisButton.Click += (_, _) => LoadAnalysis();
         _notificationTimer.Tick += (_, _) => PollNotifications();
         _tray.BalloonTipClicked += (_, _) => OpenNotifications();
         _tray.DoubleClick += (_, _) => OpenNotifications();
@@ -273,6 +275,7 @@ internal sealed partial class MainForm : AsyncForm
     {
         _detailCancellation?.Cancel();
         _backtestCancellation?.Cancel();
+        _analysisCancellation?.Cancel();
         var version = ++_detailVersion;
         var item = SelectedItem;
         ResetDetails(item);
@@ -466,6 +469,50 @@ internal sealed partial class MainForm : AsyncForm
         SetStatus(_indicatorStatus, "Selecione um ativo para consultar os indicadores.");
         SetStatus(_signalStatus, "Selecione um ativo para consultar os sinais.");
         SetStatus(_backtestStatus, "Selecione um sinal para consultar o backtest.");
+        _analysisText.Clear();
+        _analysisNotice.Text = "";
+        SetStatus(_analysisStatus, item is null
+            ? "Selecione um ativo para gerar a análise."
+            : $"Gere uma análise de {item.Ativo.Ticker} quando quiser. Cada geração consome cota da IA no servidor.");
+        UiTheme.SetButtonEnabled(_analysisButton, item is not null, true);
+    }
+
+    private void LoadAnalysis()
+    {
+        var item = SelectedItem;
+        if (item is null || !IsCurrentSession || !_analysisButton.Enabled) return;
+        _analysisCancellation?.Cancel();
+        var detailVersion = _detailVersion;
+        UiTheme.SetButtonEnabled(_analysisButton, false, true);
+        _analysisText.Clear();
+        _analysisNotice.Text = "";
+        SetStatus(_analysisStatus, $"Gerando análise de {item.Ativo.Ticker}…");
+        Run(async lifetime =>
+        {
+            using var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+            _analysisCancellation = request;
+            try
+            {
+                var analysis = await _api.GetAiAnalysisAsync(item.Ativo.Id, request.Token);
+                if (!IsCurrentDetail(detailVersion, request.Token)) return;
+                _analysisText.Text = analysis.Texto.ReplaceLineEndings("\r\n");
+                _analysisNotice.Text = analysis.AvisoLegal;
+                SetStatus(_analysisStatus, $"Gerada em {analysis.GeradoEm.LocalDateTime:dd/MM/yyyy HH:mm} por {analysis.Modelo}" +
+                                           (analysis.EmCache ? " · reaproveitada pelo servidor (dados sem alteração)." : "."));
+            }
+            catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+            catch (Exception exception)
+            {
+                if (!IsCurrentDetail(detailVersion, request.Token)) return;
+                if (exception is ApiException { StatusCode: HttpStatusCode.Unauthorized }) HandleError(exception, _analysisStatus);
+                else SetStatus(_analysisStatus, UiErrors.AiMessage(exception), true);
+            }
+            finally
+            {
+                if (ReferenceEquals(_analysisCancellation, request)) _analysisCancellation = null;
+                if (IsCurrentDetail(detailVersion, CancellationToken.None)) UiTheme.SetButtonEnabled(_analysisButton, true, true);
+            }
+        }, exception => HandleError(exception, _analysisStatus));
     }
 
     private void PollNotifications()
@@ -572,6 +619,7 @@ internal sealed partial class MainForm : AsyncForm
         _searchCancellation?.Cancel();
         _detailCancellation?.Cancel();
         _backtestCancellation?.Cancel();
+        _analysisCancellation?.Cancel();
         _watchlist.Clear();
         _searchResults.Items.Clear();
         _watchGrid.Rows.Clear();
@@ -616,6 +664,13 @@ internal sealed partial class MainForm : AsyncForm
     {
         if (!IsCurrentSession || _dialogOpen) return;
         using var form = new PortfolioForm(_api, _session, _watchlist.Select(item => item.Ativo));
+        ShowModule(form, () => form.SessionExpired);
+    }
+
+    private void OpenChat()
+    {
+        if (!IsCurrentSession || _dialogOpen) return;
+        using var form = new ChatForm(_api, _session);
         ShowModule(form, () => form.SessionExpired);
     }
 
