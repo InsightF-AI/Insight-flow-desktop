@@ -409,9 +409,9 @@ internal sealed partial class MainForm : AsyncForm
             {
                 var result = await _api.GetBacktestAsync(item.Ativo.Id, signal.RegraId, request.Token);
                 if (!IsCurrentDetail(detailVersion, request.Token) || !ReferenceEquals(_signals.CurrentRow?.Tag, signal)) return;
-                _backtest.Rows.Add(result.TotalOcorrencias, NullableNumber(result.RetornoMedio5Pregoes),
-                    NullableNumber(result.RetornoMedio20Pregoes), NullableNumber(result.RetornoMedio60Pregoes));
-                SetStatus(_backtestStatus, "Retornos conforme unidade fornecida pela API; indisponível significa histórico insuficiente.");
+                _backtest.Rows.Add(result.TotalOcorrencias, NullablePercent(result.RetornoMedio5Pregoes),
+                    NullablePercent(result.RetornoMedio20Pregoes), NullablePercent(result.RetornoMedio60Pregoes));
+                SetStatus(_backtestStatus, "Retorno médio após cada ocorrência, em %. Indisponível significa histórico insuficiente para a janela.");
             }
             catch (OperationCanceledException) when (request.IsCancellationRequested) { }
             catch (Exception exception)
@@ -499,7 +499,9 @@ internal sealed partial class MainForm : AsyncForm
 
     private static string Number(decimal value) => value.ToString("#,0.########", CultureInfo.CurrentCulture);
 
-    private static string NullableNumber(decimal? value) => value is null ? "Indisponível" : Number(value.Value);
+    // O backend calcula (preço futuro / preço base − 1) × 100: o valor já está em pontos percentuais.
+    private static string NullablePercent(decimal? value) =>
+        value is null ? "Indisponível" : value.Value.ToString("+#,0.##;-#,0.##;0", CultureInfo.CurrentCulture) + "%";
 
     private static string JsonSummary(JsonElement? value)
     {
