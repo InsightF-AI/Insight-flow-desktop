@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Reflection;
 using System.Text.Json;
 using InsightFlow.Desktop.Api;
@@ -111,7 +111,7 @@ public sealed class DesktopUiTests
     {
         Id = Guid.NewGuid(), Ativo = new AssetResponse { Id = Guid.NewGuid(), Ticker = "PETR4", Nome = "Petrobras", Tipo = "ACAO", Moeda = "BRL" },
         TipoCondicao = InsightFlowApiClient.PriceGreaterThanOrEqual, ValorAlvo = 1_000_000_001.5m,
-        MoedaAlvo = "BRL", Habilitado = true, UltimoEstado = "NAO_DISPARADO", CriadoEm = DateTimeOffset.UtcNow, AtualizadoEm = DateTimeOffset.UtcNow
+        MoedaAlvo = "BRL", Habilitado = true, UltimoEstado = false, CriadoEm = DateTimeOffset.UtcNow, AtualizadoEm = DateTimeOffset.UtcNow
     };
 
     private static IEnumerable<Control> Descendants(Control control) =>

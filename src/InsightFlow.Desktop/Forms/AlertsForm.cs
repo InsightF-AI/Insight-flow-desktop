@@ -167,7 +167,7 @@ internal sealed class AlertsForm : AsyncForm
             foreach (var alert in alerts.OrderBy(alert => alert.Ativo.Ticker))
             {
                 var index = _grid.Rows.Add(alert.Ativo.Ticker, ConditionLabel(alert.TipoCondicao),
-                    $"{alert.MoedaAlvo} {Number(alert.ValorAlvo)}", alert.Habilitado ? "Habilitado" : "Desabilitado",
+                    $"{alert.MoedaAlvo} {Number(alert.ValorAlvo)}", StateLabel(alert),
                     alert.DisparadoEm?.LocalDateTime.ToString("dd/MM/yyyy HH:mm") ?? "—");
                 _grid.Rows[index].Tag = alert;
             }
@@ -351,6 +351,9 @@ internal sealed class AlertsForm : AsyncForm
         InsightFlowApiClient.PriceLessThanOrEqual => "Preço ≤ alvo",
         _ => condition
     };
+
+    private static string StateLabel(AlertResponse alert) =>
+        !alert.Habilitado ? "Desabilitado" : alert.UltimoEstado ? "Condição atingida" : "Monitorando";
 
     private static string Number(decimal value) => value.ToString("#,0.########", CultureInfo.CurrentCulture);
     private sealed record ConditionChoice(string Value, string Label);

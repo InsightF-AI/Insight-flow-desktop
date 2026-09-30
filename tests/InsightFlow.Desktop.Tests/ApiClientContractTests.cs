@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Text;
 using System.Text.Json;
 using InsightFlow.Desktop.Api;
@@ -404,7 +404,7 @@ public sealed class ApiClientContractTests
           "valor_alvo": 42.50,
           "moeda_alvo": "BRL",
           "habilitado": true,
-          "ultimo_estado": "NAO_DISPARADO",
+          "ultimo_estado": false,
           "disparado_em": null,
           "criado_em": "2026-09-16T12:00:00Z",
           "atualizado_em": "2026-09-16T12:00:00Z"

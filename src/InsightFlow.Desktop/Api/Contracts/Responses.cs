@@ -194,8 +194,9 @@ public sealed record AlertResponse
     [JsonPropertyName("habilitado"), JsonRequired]
     public bool Habilitado { get; init; }
 
+    // Verdadeiro quando a condição estava satisfeita na última avaliação do backend.
     [JsonPropertyName("ultimo_estado"), JsonRequired]
-    public string UltimoEstado { get; init; } = string.Empty;
+    public bool UltimoEstado { get; init; }
 
     [JsonPropertyName("disparado_em"), JsonRequired]
     public DateTimeOffset? DisparadoEm { get; init; }
