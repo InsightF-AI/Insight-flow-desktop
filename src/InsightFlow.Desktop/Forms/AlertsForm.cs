@@ -121,7 +121,7 @@ internal sealed class AlertsForm : AsyncForm
         actions.Controls.Add(_newButton);
         actions.Controls.Add(_deleteButton);
         editor.Controls.Add(actions);
-        var note = UiTheme.Label("A aplicação cadastra e configura o alerta. A entrega de notificações no Windows depende de um contrato adicional do backend.", 8.5f);
+        var note = UiTheme.Label("O backend avalia os alertas habilitados periodicamente. Quando a condição é atingida, a ocorrência aparece em Notificações.", 8.5f);
         note.ForeColor = UiTheme.InkMuted;
         note.MaximumSize = new Size(270, 0);
         note.AutoSize = true;

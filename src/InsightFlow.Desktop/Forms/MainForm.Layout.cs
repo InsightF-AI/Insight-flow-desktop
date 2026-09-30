@@ -35,6 +35,9 @@ internal sealed partial class MainForm
     private readonly Label _indicatorStatus = UiTheme.Label("Selecione um ativo para consultar os indicadores.", 9);
     private readonly Label _signalStatus = UiTheme.Label("Selecione um ativo para consultar os sinais.", 9);
     private readonly Label _backtestStatus = UiTheme.Label("Selecione um sinal para consultar o backtest.", 9);
+    private readonly NotifyIcon _tray = new() { Icon = SystemIcons.Information, Text = "InsightFlow" };
+    private readonly System.Windows.Forms.Timer _notificationTimer = new() { Interval = NotificationPollMilliseconds };
+    private Button _notificationsNav = null!;
 
     private void BuildLayout(Uri apiUrl)
     {
@@ -119,6 +122,8 @@ internal sealed partial class MainForm
         AddNavHeading(nav, "MONITORAMENTO");
         var alertsNav = AddNavButton(nav, "  Alertas");
         alertsNav.Click += (_, _) => OpenAlerts();
+        _notificationsNav = AddNavButton(nav, "  Notificações");
+        _notificationsNav.Click += (_, _) => OpenNotifications();
         var searchNav = AddNavButton(nav, "  Buscar ativos");
         searchNav.Click += (_, _) => _search.Focus();
         AddNavHeading(nav, "FERRAMENTAS");

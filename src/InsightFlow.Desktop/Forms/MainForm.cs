@@ -10,6 +10,9 @@ namespace InsightFlow.Desktop.Forms;
 
 internal sealed partial class MainForm : AsyncForm
 {
+    // Não há push/SSE no backend; a caixa de notificações é consultada periodicamente enquanto a janela está aberta.
+    private const int NotificationPollMilliseconds = 120_000;
+    private readonly HashSet<Guid> _knownNotifications = [];
     private readonly InsightFlowApiClient _api;
     private readonly UserSession _session;
     private readonly int _sessionVersion;
@@ -23,6 +26,9 @@ internal sealed partial class MainForm : AsyncForm
     private bool _bindingSignals;
     private bool _watchBusy;
     private bool _endingSession;
+    private bool _pollingNotifications;
+    private bool _notificationsSeeded;
+    private bool _dialogOpen;
 
     public bool LogoutRequested { get; private set; }
     public bool SessionExpired { get; private set; }
@@ -63,9 +69,22 @@ internal sealed partial class MainForm : AsyncForm
             if (!_bindingSignals) LoadSelectedBacktest();
         };
         _checkConnection.Click += (_, _) => CheckConnection();
-        Shown += (_, _) => { CheckConnection(); LoadWatchlist(); };
+        _notificationTimer.Tick += (_, _) => PollNotifications();
+        _tray.BalloonTipClicked += (_, _) => OpenNotifications();
+        _tray.DoubleClick += (_, _) => OpenNotifications();
+        Shown += (_, _) =>
+        {
+            CheckConnection();
+            LoadWatchlist();
+            _tray.Visible = true;
+            PollNotifications();
+            _notificationTimer.Start();
+        };
         FormClosed += (_, _) =>
         {
+            StopNotifications();
+            _notificationTimer.Dispose();
+            _tray.Dispose();
             _session.Clear();
             _watchlist.Clear();
             _searchResults.Items.Clear();
@@ -219,7 +238,9 @@ internal sealed partial class MainForm : AsyncForm
                 var index = _watchlist.FindIndex(existing => existing.Ativo.Id == item.Ativo.Id);
                 if (index >= 0) _watchlist[index] = updated;
                 BindWatchlist(item.Ativo.Id);
-                SetStatus(_watchStatus, "Preferência salva na API. Entrega no Windows ainda não disponível.");
+                SetStatus(_watchStatus, enabled
+                    ? "Preferência salva. Sinais deste ativo aparecerão em Notificações."
+                    : "Preferência salva. Este ativo não gerará notificações de sinais.");
             }
             finally { if (IsCurrentSession) SetWatchBusy(false); }
         }, exception => HandleError(exception, _watchStatus));
@@ -447,6 +468,69 @@ internal sealed partial class MainForm : AsyncForm
         SetStatus(_backtestStatus, "Selecione um sinal para consultar o backtest.");
     }
 
+    private void PollNotifications()
+    {
+        if (_pollingNotifications || _dialogOpen || !IsCurrentSession) return;
+        _pollingNotifications = true;
+        Run(async cancellationToken =>
+        {
+            try
+            {
+                var unread = await _api.GetNotificationsAsync(onlyUnread: true, cancellationToken);
+                if (!IsCurrentSession) return;
+                UpdateUnreadCount(unread.Count);
+                var fresh = unread.Where(notification => _knownNotifications.Add(notification.Id)).ToArray();
+                if (!_notificationsSeeded)
+                {
+                    // Na primeira consulta da sessão, um único resumo evita uma rajada de avisos antigos.
+                    _notificationsSeeded = true;
+                    if (unread.Count > 0)
+                        ShowBalloon("Notificações não lidas", $"Você tem {unread.Count} notificação(ões) não lida(s).");
+                }
+                else if (fresh.Length == 1)
+                {
+                    ShowBalloon(NotificationsForm.TypeLabel(fresh[0].Tipo), fresh[0].Mensagem);
+                }
+                else if (fresh.Length > 1)
+                {
+                    ShowBalloon("Novas notificações", $"{fresh.Length} novas notificações. A mais recente: {fresh.MaxBy(item => item.CriadoEm)!.Mensagem}");
+                }
+            }
+            catch (ApiException exception) when (exception.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                if (IsCurrentSession) EndSession(true);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Falhas da consulta em segundo plano não interrompem o uso; a próxima rodada tenta de novo.
+            }
+            finally
+            {
+                _pollingNotifications = false;
+            }
+        }, _ => { });
+    }
+
+    private void UpdateUnreadCount(int count)
+    {
+        _notificationsNav.Text = count == 0 ? "  Notificações" : $"  Notificações ({count})";
+        _notificationsNav.ForeColor = count == 0 ? UiTheme.InkMuted : UiTheme.Amber;
+        _tray.Text = count == 0 ? "InsightFlow" : $"InsightFlow — {count} não lida(s)";
+    }
+
+    private void ShowBalloon(string title, string text)
+    {
+        if (!_tray.Visible) return;
+        _tray.ShowBalloonTip(8000, title, text.Length <= 240 ? text : text[..237] + "…", ToolTipIcon.Info);
+    }
+
+    private void StopNotifications()
+    {
+        _notificationTimer.Stop();
+        _tray.Visible = false;
+        _knownNotifications.Clear();
+    }
+
     private void SetWatchBusy(bool busy)
     {
         _watchBusy = busy;
@@ -483,6 +567,7 @@ internal sealed partial class MainForm : AsyncForm
         _endingSession = true;
         SessionExpired = expired;
         LogoutRequested = true;
+        StopNotifications();
         _session.Clear();
         _searchCancellation?.Cancel();
         _detailCancellation?.Cancel();
@@ -512,10 +597,33 @@ internal sealed partial class MainForm : AsyncForm
 
     private void OpenAlerts()
     {
-        if (!IsCurrentSession) return;
+        if (!IsCurrentSession || _dialogOpen) return;
         using var form = new AlertsForm(_api, _session);
-        form.ShowDialog(this);
-        if (form.SessionExpired) EndSession(true);
+        ShowModule(form, () => form.SessionExpired);
+    }
+
+    private void OpenNotifications()
+    {
+        if (!IsCurrentSession || _dialogOpen) return;
+        var tickers = _watchlist.ToDictionary(item => item.Ativo.Id, item => item.Ativo.Ticker);
+        using var form = new NotificationsForm(_api, _session, tickers);
+        ShowModule(form, () => form.SessionExpired);
+        // Leituras feitas na tela atualizam o contador sem esperar a próxima rodada.
+        PollNotifications();
+    }
+
+    private void ShowModule(Form form, Func<bool> sessionExpired)
+    {
+        _dialogOpen = true;
+        try
+        {
+            form.ShowDialog(this);
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
+        if (sessionExpired()) EndSession(true);
     }
 
     private static void SetStatus(Label label, string text, bool error = false)
