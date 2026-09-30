@@ -13,6 +13,15 @@ public sealed class InsightFlowApiClient
     private const int MaximumErrorBodyBytes = 16 * 1024;
     public const string PriceGreaterThanOrEqual = "PRECO_MAIOR_IGUAL";
     public const string PriceLessThanOrEqual = "PRECO_MENOR_IGUAL";
+    public const string OperationBuy = "COMPRA";
+    public const string OperationSell = "VENDA";
+    public const string BenchmarkCdi = "CDI";
+    public const string BenchmarkIbovespa = "IBOVESPA";
+    public const string ChatUser = "usuario";
+    public const string ChatAssistant = "assistente";
+    // Padrões do backend (chat_max_mensagens / chat_max_caracteres_mensagem); o servidor continua sendo a autoridade.
+    public const int ChatMaxMessages = 20;
+    public const int ChatMaxCharacters = 2000;
     private readonly HttpClient _httpClient;
     private readonly UserSession _session;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -133,6 +142,82 @@ public sealed class InsightFlowApiClient
         SendWithoutResponseAsync(HttpMethod.Delete,
             $"/api/v1/alertas/{RequiredId(alertaId, nameof(alertaId)):D}", null, true, cancellationToken);
 
+    public async Task<IReadOnlyList<NotificationResponse>> GetNotificationsAsync(bool onlyUnread = false, CancellationToken cancellationToken = default) =>
+        await SendAsync<List<NotificationResponse>>(HttpMethod.Get,
+            onlyUnread ? "/api/v1/notificacoes?apenas_nao_lidas=true" : "/api/v1/notificacoes",
+            null, true, cancellationToken).ConfigureAwait(false);
+
+    public Task<NotificationResponse> MarkNotificationReadAsync(Guid notificacaoId, CancellationToken cancellationToken = default) =>
+        SendAsync<NotificationResponse>(HttpMethod.Patch,
+            $"/api/v1/notificacoes/{RequiredId(notificacaoId, nameof(notificacaoId)):D}/lida", null, true, cancellationToken);
+
+    public Task<OperationResponse> RegisterOperationAsync(
+        Guid ativoId,
+        string tipo,
+        decimal quantidade,
+        decimal precoUnitario,
+        DateOnly data,
+        CancellationToken cancellationToken = default)
+    {
+        RequiredId(ativoId, nameof(ativoId));
+        if (tipo is not OperationBuy and not OperationSell)
+        {
+            throw new ArgumentOutOfRangeException(nameof(tipo), "Tipo de operação não reconhecido.");
+        }
+        if (quantidade <= 0) throw new ArgumentOutOfRangeException(nameof(quantidade), "A quantidade deve ser maior que zero.");
+        if (precoUnitario <= 0) throw new ArgumentOutOfRangeException(nameof(precoUnitario), "O preço unitário deve ser maior que zero.");
+        // O backend compara com a data UTC atual.
+        if (data > DateOnly.FromDateTime(DateTime.UtcNow)) throw new ArgumentOutOfRangeException(nameof(data), "A data da operação não pode ser futura.");
+
+        return SendAsync<OperationResponse>(HttpMethod.Post, "/api/v1/operacoes",
+            new { ativo_id = ativoId, tipo, quantidade, preco_unitario = precoUnitario, data }, true, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<OperationResponse>> GetOperationsAsync(CancellationToken cancellationToken = default) =>
+        await SendAsync<List<OperationResponse>>(HttpMethod.Get, "/api/v1/operacoes", null, true, cancellationToken).ConfigureAwait(false);
+
+    public Task DeleteOperationAsync(Guid operacaoId, CancellationToken cancellationToken = default) =>
+        SendWithoutResponseAsync(HttpMethod.Delete,
+            $"/api/v1/operacoes/{RequiredId(operacaoId, nameof(operacaoId)):D}", null, true, cancellationToken);
+
+    public async Task<IReadOnlyList<PositionResponse>> GetPositionsAsync(CancellationToken cancellationToken = default) =>
+        await SendAsync<List<PositionResponse>>(HttpMethod.Get, "/api/v1/portfolio/posicoes", null, true, cancellationToken).ConfigureAwait(false);
+
+    public Task<ProfitabilityResponse> GetProfitabilityAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<ProfitabilityResponse>(HttpMethod.Get, "/api/v1/portfolio/rentabilidade", null, true, cancellationToken);
+
+    public Task<BenchmarkComparisonResponse> GetBenchmarkComparisonAsync(string benchmark, CancellationToken cancellationToken = default)
+    {
+        if (benchmark is not BenchmarkCdi and not BenchmarkIbovespa)
+        {
+            throw new ArgumentOutOfRangeException(nameof(benchmark), "Benchmark não reconhecido.");
+        }
+        return SendAsync<BenchmarkComparisonResponse>(HttpMethod.Get, $"/api/v1/portfolio/benchmark?benchmark={benchmark}", null, true, cancellationToken);
+    }
+
+    public Task<DistributionResponse> GetDistributionAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<DistributionResponse>(HttpMethod.Get, "/api/v1/portfolio/distribuicao", null, true, cancellationToken);
+
+    public Task<AiAnalysisResponse> GetAiAnalysisAsync(Guid ativoId, CancellationToken cancellationToken = default) =>
+        SendAsync<AiAnalysisResponse>(HttpMethod.Get,
+            $"/api/v1/ativos/{RequiredId(ativoId, nameof(ativoId)):D}/analise", null, true, cancellationToken);
+
+    public Task<ChatResponse> ChatAsync(IReadOnlyList<ChatMessage> mensagens, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(mensagens);
+        if (mensagens.Count == 0) throw new ArgumentException("Envie ao menos uma mensagem.", nameof(mensagens));
+        if (mensagens.Count > ChatMaxMessages) throw new ArgumentException($"Envie no máximo {ChatMaxMessages} mensagens.", nameof(mensagens));
+        if (mensagens[^1].Papel != ChatUser) throw new ArgumentException("A última mensagem deve ser do usuário.", nameof(mensagens));
+        foreach (var mensagem in mensagens)
+        {
+            if (mensagem.Papel is not ChatUser and not ChatAssistant) throw new ArgumentException("Papel de mensagem não reconhecido.", nameof(mensagens));
+            if (string.IsNullOrWhiteSpace(mensagem.Texto)) throw new ArgumentException("As mensagens não podem ser vazias.", nameof(mensagens));
+            if (mensagem.Texto.Length > ChatMaxCharacters) throw new ArgumentException($"Cada mensagem deve ter até {ChatMaxCharacters} caracteres.", nameof(mensagens));
+        }
+
+        return SendAsync<ChatResponse>(HttpMethod.Post, "/api/v1/chat", new { mensagens }, true, cancellationToken);
+    }
+
     private HttpRequestMessage CreateRequest(HttpMethod method, string path, object? body, bool authenticated)
     {
         var request = new HttpRequestMessage(method, path);
@@ -191,6 +276,14 @@ public sealed class InsightFlowApiClient
             BacktestResponse backtest => backtest.RegraId != Guid.Empty && backtest.AtivoId != Guid.Empty && backtest.TotalOcorrencias >= 0,
             AlertResponse alert => ValidAlert(alert),
             List<AlertResponse> alerts => alerts.All(ValidAlert),
+            NotificationResponse notification => ValidNotification(notification),
+            List<NotificationResponse> notifications => notifications.All(ValidNotification),
+            OperationResponse operation => ValidOperation(operation),
+            List<OperationResponse> operations => operations.All(ValidOperation),
+            List<PositionResponse> positions => positions.All(position => position.AtivoId != Guid.Empty && !string.IsNullOrWhiteSpace(position.Ticker)),
+            BenchmarkComparisonResponse comparison => comparison.Benchmark is BenchmarkCdi or BenchmarkIbovespa,
+            AiAnalysisResponse analysis => analysis.AtivoId != Guid.Empty && !string.IsNullOrWhiteSpace(analysis.Texto) && !string.IsNullOrWhiteSpace(analysis.AvisoLegal),
+            ChatResponse chat => !string.IsNullOrWhiteSpace(chat.Texto) && !string.IsNullOrWhiteSpace(chat.AvisoLegal),
             _ => true
         };
 
@@ -231,6 +324,14 @@ public sealed class InsightFlowApiClient
         (alert.TipoCondicao is PriceGreaterThanOrEqual or PriceLessThanOrEqual) &&
         alert.ValorAlvo > 0 && !string.IsNullOrWhiteSpace(alert.MoedaAlvo);
 
+    private static bool ValidNotification(NotificationResponse notification) =>
+        notification.Id != Guid.Empty && !string.IsNullOrWhiteSpace(notification.Tipo) &&
+        !string.IsNullOrWhiteSpace(notification.Mensagem) && notification.Contexto.ValueKind == JsonValueKind.Object;
+
+    private static bool ValidOperation(OperationResponse operation) =>
+        operation.Id != Guid.Empty && operation.AtivoId != Guid.Empty &&
+        (operation.Tipo is OperationBuy or OperationSell) && operation.Quantidade > 0 && operation.PrecoUnitario > 0;
+
     private static Guid RequiredId(Guid id, string parameterName) =>
         id == Guid.Empty ? throw new ArgumentException("O identificador deve ser um UUID válido.", parameterName) : id;
 
@@ -268,7 +369,14 @@ public sealed class InsightFlowApiClient
             message = await ReadErrorDetailAsync(response, cancellationToken).ConfigureAwait(false) ?? message;
         }
 
-        throw new ApiException(response.StatusCode, message);
+        throw new ApiException(response.StatusCode, message, RetryAfter(response));
+    }
+
+    private static TimeSpan? RetryAfter(HttpResponseMessage response)
+    {
+        var header = response.Headers.RetryAfter;
+        if (header?.Delta is { } delta) return delta;
+        return header?.Date is { } date ? date - DateTimeOffset.UtcNow : null;
     }
 
     private static async Task<string?> ReadErrorDetailAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -379,6 +487,13 @@ public sealed class InsightFlowApiClient
                 "valor_alvo" => "Preço-alvo",
                 "tipo_condicao" => "Condição",
                 "notificar" => "Notificações",
+                "ativo_id" => "Ativo",
+                "tipo" => "Tipo",
+                "quantidade" => "Quantidade",
+                "preco_unitario" => "Preço unitário",
+                "data" => "Data",
+                "benchmark" => "Benchmark",
+                "mensagens" => "Mensagens",
                 _ => null
             };
             if (label is not null)
@@ -398,6 +513,7 @@ public sealed class InsightFlowApiClient
         HttpStatusCode.Conflict => "Este cadastro ou item já existe.",
         HttpStatusCode.UnprocessableEntity => "Confira os dados informados e tente novamente.",
         HttpStatusCode.TooManyRequests => "Muitas solicitações. Aguarde um pouco e tente novamente.",
+        HttpStatusCode.BadGateway => "O servidor não conseguiu gerar uma resposta válida. Tente novamente.",
         HttpStatusCode.ServiceUnavailable => "O serviço está indisponível. Tente novamente mais tarde.",
         _ => "Não foi possível concluir a solicitação à API. Tente novamente."
     };

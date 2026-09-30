@@ -207,3 +207,164 @@ public sealed record AlertResponse
     [JsonPropertyName("atualizado_em"), JsonRequired]
     public DateTimeOffset AtualizadoEm { get; init; }
 }
+
+public sealed record NotificationResponse
+{
+    [JsonPropertyName("id"), JsonRequired]
+    public Guid Id { get; init; }
+
+    [JsonPropertyName("ativo_id"), JsonRequired]
+    public Guid? AtivoId { get; init; }
+
+    [JsonPropertyName("tipo"), JsonRequired]
+    public string Tipo { get; init; } = string.Empty;
+
+    [JsonPropertyName("mensagem"), JsonRequired]
+    public string Mensagem { get; init; } = string.Empty;
+
+    [JsonPropertyName("contexto"), JsonRequired]
+    public JsonElement Contexto { get; init; }
+
+    [JsonPropertyName("lida"), JsonRequired]
+    public bool Lida { get; init; }
+
+    [JsonPropertyName("criado_em"), JsonRequired]
+    public DateTimeOffset CriadoEm { get; init; }
+}
+
+public sealed record OperationResponse
+{
+    [JsonPropertyName("id"), JsonRequired]
+    public Guid Id { get; init; }
+
+    [JsonPropertyName("ativo_id"), JsonRequired]
+    public Guid AtivoId { get; init; }
+
+    [JsonPropertyName("tipo"), JsonRequired]
+    public string Tipo { get; init; } = string.Empty;
+
+    [JsonPropertyName("quantidade"), JsonRequired]
+    public decimal Quantidade { get; init; }
+
+    [JsonPropertyName("preco_unitario"), JsonRequired]
+    public decimal PrecoUnitario { get; init; }
+
+    [JsonPropertyName("data"), JsonRequired]
+    public DateOnly Data { get; init; }
+
+    [JsonPropertyName("criado_em"), JsonRequired]
+    public DateTimeOffset CriadoEm { get; init; }
+}
+
+// Valores monetários sem sufixo _brl estão na moeda do ativo, que a API não repete aqui.
+public sealed record PositionResponse
+{
+    [JsonPropertyName("ativo_id"), JsonRequired]
+    public Guid AtivoId { get; init; }
+
+    [JsonPropertyName("ticker"), JsonRequired]
+    public string Ticker { get; init; } = string.Empty;
+
+    [JsonPropertyName("quantidade"), JsonRequired]
+    public decimal Quantidade { get; init; }
+
+    [JsonPropertyName("preco_medio"), JsonRequired]
+    public decimal PrecoMedio { get; init; }
+
+    [JsonPropertyName("cotacao_atual"), JsonRequired]
+    public decimal CotacaoAtual { get; init; }
+
+    [JsonPropertyName("valor_mercado"), JsonRequired]
+    public decimal ValorMercado { get; init; }
+
+    [JsonPropertyName("valor_mercado_brl"), JsonRequired]
+    public decimal ValorMercadoBrl { get; init; }
+
+    [JsonPropertyName("lucro_nao_realizado"), JsonRequired]
+    public decimal LucroNaoRealizado { get; init; }
+
+    [JsonPropertyName("lucro_realizado"), JsonRequired]
+    public decimal LucroRealizado { get; init; }
+}
+
+// "percentual" é uma fração (0,12 = 12%), conforme o cálculo do PortfolioService.
+public sealed record ProfitabilityResponse
+{
+    [JsonPropertyName("custo_base_brl"), JsonRequired]
+    public decimal CustoBaseBrl { get; init; }
+
+    [JsonPropertyName("valor_mercado_brl"), JsonRequired]
+    public decimal ValorMercadoBrl { get; init; }
+
+    [JsonPropertyName("lucro_nao_realizado_brl"), JsonRequired]
+    public decimal LucroNaoRealizadoBrl { get; init; }
+
+    [JsonPropertyName("lucro_realizado_brl"), JsonRequired]
+    public decimal LucroRealizadoBrl { get; init; }
+
+    [JsonPropertyName("percentual"), JsonRequired]
+    public decimal Percentual { get; init; }
+}
+
+// Rentabilidades expressas como fração; o benchmark é nulo quando a fonte está indisponível.
+public sealed record BenchmarkComparisonResponse
+{
+    [JsonPropertyName("benchmark"), JsonRequired]
+    public string Benchmark { get; init; } = string.Empty;
+
+    [JsonPropertyName("rentabilidade_carteira_percentual"), JsonRequired]
+    public decimal RentabilidadeCarteiraPercentual { get; init; }
+
+    [JsonPropertyName("rentabilidade_benchmark_percentual"), JsonRequired]
+    public decimal? RentabilidadeBenchmarkPercentual { get; init; }
+}
+
+// Participações como fração do valor de mercado em BRL.
+public sealed record DistributionResponse
+{
+    [JsonPropertyName("por_classe"), JsonRequired]
+    public Dictionary<string, decimal> PorClasse { get; init; } = [];
+
+    [JsonPropertyName("por_setor"), JsonRequired]
+    public Dictionary<string, decimal> PorSetor { get; init; } = [];
+
+    [JsonPropertyName("por_moeda"), JsonRequired]
+    public Dictionary<string, decimal> PorMoeda { get; init; } = [];
+}
+
+public sealed record AiAnalysisResponse
+{
+    [JsonPropertyName("ativo_id"), JsonRequired]
+    public Guid AtivoId { get; init; }
+
+    [JsonPropertyName("texto"), JsonRequired]
+    public string Texto { get; init; } = string.Empty;
+
+    [JsonPropertyName("gerado_em"), JsonRequired]
+    public DateTimeOffset GeradoEm { get; init; }
+
+    [JsonPropertyName("modelo"), JsonRequired]
+    public string Modelo { get; init; } = string.Empty;
+
+    [JsonPropertyName("em_cache"), JsonRequired]
+    public bool EmCache { get; init; }
+
+    [JsonPropertyName("aviso_legal"), JsonRequired]
+    public string AvisoLegal { get; init; } = string.Empty;
+}
+
+public sealed record ChatMessage(
+    [property: JsonPropertyName("papel")] string Papel,
+    [property: JsonPropertyName("texto")] string Texto);
+
+public sealed record ChatResponse
+{
+    [JsonPropertyName("texto"), JsonRequired]
+    public string Texto { get; init; } = string.Empty;
+
+    [JsonPropertyName("modelo"), JsonRequired]
+    public string Modelo { get; init; } = string.Empty;
+
+    [JsonPropertyName("aviso_legal"), JsonRequired]
+    public string AvisoLegal { get; init; } = string.Empty;
+}
