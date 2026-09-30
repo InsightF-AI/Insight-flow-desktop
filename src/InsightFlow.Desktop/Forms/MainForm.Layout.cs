@@ -118,7 +118,8 @@ internal sealed partial class MainForm
         };
         AddNavHeading(nav, "PRINCIPAL");
         AddNavButton(nav, "  Visão geral", true);
-        AddUnavailableNav(nav, "  Portfólio");
+        var portfolioNav = AddNavButton(nav, "  Portfólio");
+        portfolioNav.Click += (_, _) => OpenPortfolio();
         AddNavHeading(nav, "MONITORAMENTO");
         var alertsNav = AddNavButton(nav, "  Alertas");
         alertsNav.Click += (_, _) => OpenAlerts();

@@ -612,6 +612,13 @@ internal sealed partial class MainForm : AsyncForm
         PollNotifications();
     }
 
+    private void OpenPortfolio()
+    {
+        if (!IsCurrentSession || _dialogOpen) return;
+        using var form = new PortfolioForm(_api, _session, _watchlist.Select(item => item.Ativo));
+        ShowModule(form, () => form.SessionExpired);
+    }
+
     private void ShowModule(Form form, Func<bool> sessionExpired)
     {
         _dialogOpen = true;
