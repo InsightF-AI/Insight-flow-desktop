@@ -21,6 +21,14 @@ $env:INSIGHTFLOW_API_URL = 'https://api.exemplo.com'
 dotnet run --project src/InsightFlow.Desktop
 ```
 
+Com o Smart App Control do Windows ligado, o `.exe` gerado pelo build não é assinado e pode ser bloqueado ("Uma política de Controle de Aplicativo bloqueou este arquivo"). Nesse caso, execute a DLL pelo host `dotnet`:
+
+```powershell
+dotnet src/InsightFlow.Desktop/bin/Debug/net10.0-windows/InsightFlow.Desktop.dll
+```
+
+O mesmo bloqueio pode atingir a DLL depois de uma alteração no código, impedindo também `dotnet test`. Nesse caso, rode os testes no CI ou em outra máquina.
+
 A variável de ambiente tem precedência sobre [appsettings.json](src/InsightFlow.Desktop/appsettings.json). Fora de loopback, a URL deve usar HTTPS. Senhas são enviadas apenas no cadastro/login; o token fica em memória e é apagado ao sair. O aplicativo não inclui credenciais de demonstração nem inicia o backend automaticamente.
 
 ## Primeiro fluxo implementado

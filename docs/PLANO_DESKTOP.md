@@ -128,4 +128,24 @@ Contrato conferido no código da branch `develop` do backend (commit `a175cb6`),
 | Portfólio | Operações, posições, rentabilidade, benchmark e distribuição implementados | Posições não informam moeda: o desktop usa a moeda do ativo da watchlist quando disponível |
 | IA | Análise por ativo e chat implementados | Depende de `AI_HABILITADA` e da chave do provedor no servidor |
 
-Testes de contrato foram adicionados para as 11 rotas novas e para o `ultimo_estado` booleano. Nesta máquina, a compilação passou sem erros nem avisos, mas o Smart App Control do Windows bloqueou o carregamento das DLLs recém-compiladas e impediu a execução dos testes. Numa execução posterior no mesmo dia, `dotnet test` rodou nesta máquina: 40 testes aprovados, nenhuma falha. O backend local (`localhost:8000`) continuava sem responder, então a validação com a API real segue pendente.
+Testes de contrato foram adicionados para as 11 rotas novas e para o `ultimo_estado` booleano. Nesta máquina, a compilação passou sem erros nem avisos, mas o Smart App Control do Windows bloqueou o carregamento das DLLs recém-compiladas e impediu a execução dos testes. Numa execução posterior no mesmo dia, `dotnet test` rodou nesta máquina: 40 testes aprovados, nenhuma falha. 
+
+### Validação com a API real (30/09/2026)
+
+Backend `develop` (commit `a175cb6`) executado localmente com `docker compose up`: Postgres, Redis, API e todas as migrations. O cliente HTTP do desktop foi exercitado contra essa instância, sem fixtures. Houve 37 verificações, todas com o resultado esperado:
+
+- Autenticação: login inválido (401), cadastro inválido (422 com mensagens por campo), e-mail duplicado (409), cadastro, login, token inválido e requisição sem sessão (401).
+- Watchlist: busca, inclusão, duplicidade (409), listagem, preferência de notificação e remoção (204).
+- Mercado: cotação e histórico `1D`/`1S`/`1M`/`3M` para PETR4 e VALE3 (162, 4, 22 e 64 pontos), e indicadores.
+- Alertas: criação, listagem, PATCH com `valor_alvo` e `ativo`, e exclusão (204). O preço-alvo zero é recusado pelo cliente antes do envio.
+- Notificações: consulta de não lidas.
+- Portfólio: compra, operações, posições, rentabilidade, distribuição e exclusão (204). Benchmark CDI e Ibovespa voltam com `rentabilidade_benchmark_percentual` nulo nesse ambiente, e a tela mostra "indisponível no momento".
+- IA: 503 "Provedor de IA indisponivel", porque o compose não habilita a IA.
+- Isolamento: um segundo usuário não vê watchlist, alertas nem operações do primeiro.
+
+Não validado:
+- Sinais: a lista voltou vazia, pois depende do agendador gerar sinais, e sem sinal não há como testar o backtest.
+- Notificação na bandeja: nenhuma notificação foi gerada.
+- IA com provedor configurado.
+
+Pendência encontrada: uma venda maior que a posição, ou a exclusão de uma compra que deixa uma venda posterior descoberta, retorna 422 com apenas o UUID do ativo em `detail`. A tela de portfólio exibiria esse UUID como mensagem de erro. Há uma correção no desktop que troca o UUID por uma mensagem explicativa, aguardando revisão. Sugerir ao backend uma mensagem legível para `QuantidadeInsuficienteError`.
