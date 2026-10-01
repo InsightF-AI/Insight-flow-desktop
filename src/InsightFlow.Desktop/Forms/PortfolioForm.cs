@@ -383,7 +383,8 @@ internal sealed class PortfolioForm : AsyncForm
             }
             // As posições dependem da nova operação; falhas dessa leitura ficam nas seções, não no status do salvamento.
             if (IsCurrentSession) LoadAll();
-        }, exception => HandleError(exception, _status));
+        }, exception => HandleError(exception, _status,
+            $"A venda ultrapassa a quantidade de {asset.Asset.Ticker} em carteira na data informada."));
     }
 
     private void DeleteSelected()
@@ -415,7 +416,8 @@ internal sealed class PortfolioForm : AsyncForm
                 }
             }
             if (IsCurrentSession) LoadAll();
-        }, exception => HandleError(exception, _status));
+        }, exception => HandleError(exception, _status,
+            $"Sem essa operação, uma venda posterior de {Ticker(selected.AtivoId)} ficaria maior que a quantidade em carteira."));
     }
 
     private void Compare()
@@ -461,7 +463,7 @@ internal sealed class PortfolioForm : AsyncForm
         _operations.Enabled = !_writing;
     }
 
-    private void HandleError(Exception exception, Label target)
+    private void HandleError(Exception exception, Label target, string? insufficientQuantityMessage = null)
     {
         if (!IsCurrentSession) return;
         if (exception is ApiException { StatusCode: HttpStatusCode.Unauthorized })
@@ -471,7 +473,13 @@ internal sealed class PortfolioForm : AsyncForm
             Close();
             return;
         }
-        SetStatus(target, UiErrors.Message(exception), true);
+        // Quantidade insuficiente chega como 422 com apenas o UUID do ativo no detail.
+        var message = insufficientQuantityMessage is not null
+                      && exception is ApiException { StatusCode: HttpStatusCode.UnprocessableEntity } api
+                      && Guid.TryParse(api.Message, out _)
+            ? insufficientQuantityMessage
+            : UiErrors.Message(exception);
+        SetStatus(target, message, true);
     }
 
     private string Currency(Guid assetId) => _assets.TryGetValue(assetId, out var asset) ? asset.Moeda : "";
