@@ -11,11 +11,33 @@ internal class AsyncForm : Form
 
     protected AsyncForm()
     {
+        // A escala de DPI é aplicada uma única vez, no primeiro layout. Ele fica suspenso até a tela terminar
+        // de criar seus controles (CompleteLayout); do contrário só as fontes cresceriam e os tamanhos fixos não.
+        SuspendLayout();
         Font = new Font("Segoe UI", 10);
         AutoScaleDimensions = new SizeF(96, 96);
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = UiTheme.Background;
         StartPosition = FormStartPosition.CenterScreen;
+    }
+
+    // Toda tela derivada chama este método ao fim do construtor.
+    protected void CompleteLayout()
+    {
+        ResumeLayout(false);
+        PerformLayout();
+    }
+
+    protected override void OnLoad(EventArgs e)
+    {
+        // Em telas pequenas ou com escala alta, a janela (e o seu tamanho mínimo) não pode exceder a área útil.
+        var area = Screen.FromControl(this).WorkingArea;
+        MinimumSize = new Size(Math.Min(MinimumSize.Width, area.Width), Math.Min(MinimumSize.Height, area.Height));
+        if (Width > area.Width || Height > area.Height)
+        {
+            Size = new Size(Math.Min(Width, area.Width), Math.Min(Height, area.Height));
+        }
+        base.OnLoad(e);
     }
 
     protected void Run(Func<CancellationToken, Task> operation, Action<Exception> onError) =>

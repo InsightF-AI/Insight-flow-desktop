@@ -200,6 +200,21 @@ public sealed class ApiClientContractTests
     }
 
     [Fact]
+    public async Task An_empty_asset_uuid_is_rejected_before_sending_a_request()
+    {
+        var handler = RecordingHttpMessageHandler.ReturningJson("[]");
+        using var http = CreateHttpClient(handler);
+        var api = new InsightFlowApiClient(http, new UserSession());
+
+        await Assert.ThrowsAsync<ArgumentException>(() => api.GetQuoteAsync(Guid.Empty));
+        await Assert.ThrowsAsync<ArgumentException>(() => api.GetHistoryAsync(Guid.Empty, "1M"));
+        await Assert.ThrowsAsync<ArgumentException>(() => api.RemoveFromWatchlistAsync(Guid.Empty));
+        await Assert.ThrowsAsync<ArgumentException>(() => api.SetNotificationsAsync(Guid.Empty, true));
+
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
     public async Task Deleting_alert_accepts_204_without_reading_json()
     {
         var alertId = Guid.Parse("ee838914-2761-4f45-a8f3-f25bab79042f");

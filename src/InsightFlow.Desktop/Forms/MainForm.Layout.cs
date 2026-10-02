@@ -98,16 +98,16 @@ internal sealed partial class MainForm
         mark.ForeColor = UiTheme.Accent;
         mark.Anchor = AnchorStyles.None;
         brand.Controls.Add(mark, 0, 0);
-        var brandText = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, BackColor = Color.Transparent };
-        brandText.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
-        brandText.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
+        // Altura pelo conteúdo: com linhas proporcionais, a segunda linha era cortada.
+        var brandText = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, Anchor = AnchorStyles.Left, Margin = Padding.Empty, BackColor = Color.Transparent };
         var name = UiTheme.Label("InsightFlow", 12, true);
-        name.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+        name.Margin = Padding.Empty;
         var market = UiTheme.Label("B3 · CRIPTO", 7.5f, true);
         market.ForeColor = UiTheme.InkMuted;
-        market.Anchor = AnchorStyles.Left | AnchorStyles.Top;
-        brandText.Controls.Add(name, 0, 0);
-        brandText.Controls.Add(market, 0, 1);
+        market.Margin = new Padding(1, 0, 0, 0);
+        brandText.Controls.Add(name);
+        brandText.Controls.Add(market);
+        brand.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         brand.Controls.Add(brandText, 1, 0);
         sidebar.Controls.Add(brand, 0, 0);
 
@@ -118,7 +118,8 @@ internal sealed partial class MainForm
             WrapContents = false,
             AutoScroll = true,
             BackColor = Color.Transparent,
-            Padding = new Padding(0, 10, 0, 0)
+            Padding = new Padding(0, 10, 0, 0),
+            Margin = Padding.Empty
         };
         AddNavHeading(nav, "PRINCIPAL");
         AddNavButton(nav, "  Visão geral", true);
@@ -147,7 +148,7 @@ internal sealed partial class MainForm
         };
         profile.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         profile.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        var user = UiTheme.Label("Sessão ativa\nToken em memória", 8.5f, true);
+        var user = UiTheme.Label("Sessão ativa\nem memória", 8.5f);
         user.ForeColor = UiTheme.InkSecondary;
         var logout = UiTheme.Button("Sair");
         logout.MinimumSize = new Size(58, 34);
@@ -218,15 +219,16 @@ internal sealed partial class MainForm
             Margin = Padding.Empty
         };
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        content.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
+        content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        var heading = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, BackColor = Color.Transparent, Padding = new Padding(4, 12, 0, 0) };
-        heading.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        heading.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        heading.Controls.Add(UiTheme.Label("Visão geral", 20, true), 0, 0);
+        // Título e subtítulo na mesma linha: a altura fica para o gráfico e as tabelas.
+        var heading = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false, BackColor = Color.Transparent, Padding = new Padding(4, 2, 0, 2), Margin = Padding.Empty };
+        heading.Controls.Add(UiTheme.Label("Visão geral", 18, true));
         var subtitle = UiTheme.Label("Acompanhe sua watchlist e consulte o histórico dos ativos.", 9.5f);
         subtitle.ForeColor = UiTheme.InkMuted;
-        heading.Controls.Add(subtitle, 0, 1);
+        subtitle.Anchor = AnchorStyles.Bottom;
+        subtitle.Margin = new Padding(12, 4, 0, 10);
+        heading.Controls.Add(subtitle);
         content.Controls.Add(heading, 0, 0);
 
         var split = new SplitContainer
@@ -357,35 +359,38 @@ internal sealed partial class MainForm
 
     private Control BuildQuoteCard()
     {
-        var panel = Card(18);
+        // Ativo à esquerda e preço à direita: o cartão fica baixo e o gráfico cabe no tamanho padrão da janela.
+        var panel = Card(14);
         panel.AutoSize = true;
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        panel.Margin = new Padding(0, 0, 0, 12);
-        panel.RowCount = 7;
+        panel.ColumnCount = 2;
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        panel.Margin = new Padding(0, 0, 0, 10);
+        panel.RowCount = 3;
         for (var i = 0; i < panel.RowCount; i++) panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var header = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, BackColor = Color.Transparent };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        header.Controls.Add(_assetTitle, 0, 0);
+        panel.Controls.Add(_assetTitle, 0, 0);
+        _quotePrice.Anchor = AnchorStyles.Right;
+        panel.Controls.Add(_quotePrice, 1, 0);
+        _assetDescription.Dock = DockStyle.Fill;
+        _assetDescription.ForeColor = UiTheme.InkMuted;
+        panel.Controls.Add(_assetDescription, 0, 1);
+        _quoteChange.Anchor = AnchorStyles.Right;
+        panel.Controls.Add(_quoteChange, 1, 1);
+        var quoteInfo = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, Margin = Padding.Empty, BackColor = Color.Transparent };
+        _quoteRange.Margin = new Padding(0, 6, 20, 4);
+        _quoteVolume.Margin = new Padding(0, 6, 20, 4);
+        _quoteStatus.Margin = new Padding(0, 7, 0, 4);
+        _quoteStatus.ForeColor = UiTheme.InkMuted;
+        quoteInfo.Controls.Add(_quoteRange);
+        quoteInfo.Controls.Add(_quoteVolume);
+        // O estado da consulta acompanha os dados e passa para a linha de baixo quando a janela é estreita.
+        quoteInfo.Controls.Add(_quoteStatus);
+        panel.Controls.Add(quoteInfo, 0, 2);
         var pill = UiTheme.Label("COTAÇÃO", 8, true);
         pill.ForeColor = UiTheme.Accent;
         pill.BackColor = Color.FromArgb(13, 32, 56);
         pill.Padding = new Padding(8, 4, 8, 4);
-        header.Controls.Add(pill, 1, 0);
-        panel.Controls.Add(header, 0, 0);
-        _assetDescription.Dock = DockStyle.Fill;
-        _assetDescription.ForeColor = UiTheme.InkMuted;
-        panel.Controls.Add(_assetDescription, 0, 1);
-        panel.Controls.Add(_quotePrice, 0, 2);
-        panel.Controls.Add(_quoteChange, 0, 3);
-        var quoteInfo = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, Margin = Padding.Empty, BackColor = Color.Transparent };
-        _quoteRange.Margin = new Padding(0, 6, 20, 4);
-        quoteInfo.Controls.Add(_quoteRange);
-        quoteInfo.Controls.Add(_quoteVolume);
-        panel.Controls.Add(quoteInfo, 0, 4);
-        _quoteStatus.Dock = DockStyle.Fill;
-        _quoteStatus.ForeColor = UiTheme.InkMuted;
-        panel.Controls.Add(_quoteStatus, 0, 5);
+        pill.Anchor = AnchorStyles.Right | AnchorStyles.Top;
+        panel.Controls.Add(pill, 1, 2);
         return panel;
     }
 
@@ -451,12 +456,14 @@ internal sealed partial class MainForm
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.Controls.Add(SectionTitle("INDICADORES TÉCNICOS", "Valores recentes calculados pela API"), 0, 0);
-        foreach (var (name, weight) in new[] { ("Tipo", 70f), ("Valor", 75f), ("Cálculo", 95f), ("Parâmetros", 150f), ("Auxiliares", 160f) })
-        {
-            _indicators.Columns.Add(new DataGridViewTextBoxColumn { Name = name, HeaderText = name.ToUpperInvariant(), FillWeight = weight });
-        }
+        _indicators.Columns.Add(GridCells.Column("Tipo", 105f));
+        _indicators.Columns.Add(GridCells.Column("Valor", 70f, typeof(decimal), GridCells.Number));
+        _indicators.Columns.Add(GridCells.Column("Cálculo", 125f, typeof(DateTime), GridCells.DateTime));
+        _indicators.Columns.Add(GridCells.Column("Parâmetros", 130f));
+        _indicators.Columns.Add(GridCells.Column("Auxiliares", 160f));
         _indicators.AccessibleName = "Indicadores técnicos do ativo";
         panel.Controls.Add(_indicators, 0, 1);
+        _indicatorStatus.Dock = DockStyle.Fill;
         panel.Controls.Add(_indicatorStatus, 0, 2);
         return panel;
     }
@@ -466,17 +473,21 @@ internal sealed partial class MainForm
         var panel = Card(14);
         panel.RowCount = 5;
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 60));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+        // O backtest tem sempre uma linha: cabeçalho e resultado.
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 84));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.Controls.Add(SectionTitle("SINAIS", "Selecione uma regra para consultar seu backtest"), 0, 0);
-        foreach (var (name, weight) in new[] { ("Regra", 115f), ("Estado", 70f), ("Ativação", 90f), ("Descrição", 180f) })
-        {
-            _signals.Columns.Add(new DataGridViewTextBoxColumn { Name = name, HeaderText = name.ToUpperInvariant(), FillWeight = weight });
-        }
+        _signals.Columns.Add(GridCells.Column("Regra", 110f));
+        _signals.Columns.Add(GridCells.Column("Estado", 65f));
+        _signals.Columns.Add(GridCells.Column("Ativação", 120f, typeof(DateTime), GridCells.DateTime));
+        _signals.Columns.Add(GridCells.Column("Descrição", 150f));
+        _signals.Columns.Add(GridCells.Column("Contexto", 90f));
         _signals.AccessibleName = "Sinais técnicos do ativo";
         panel.Controls.Add(_signals, 0, 1);
+        _signalStatus.Dock = DockStyle.Fill;
+        _backtestStatus.Dock = DockStyle.Fill;
         panel.Controls.Add(_signalStatus, 0, 2);
         foreach (var (name, weight) in new[] { ("Ocorrências", 80f), ("5 pregões", 90f), ("20 pregões", 90f), ("60 pregões", 90f) })
         {
@@ -488,14 +499,20 @@ internal sealed partial class MainForm
         return panel;
     }
 
-    private static TableLayoutPanel Card(int padding) => new()
+    private static TableLayoutPanel Card(int padding)
     {
-        Dock = DockStyle.Fill,
-        ColumnCount = 1,
-        BackColor = UiTheme.Surface,
-        Padding = new Padding(padding),
-        Margin = Padding.Empty
-    };
+        var card = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            BackColor = UiTheme.Surface,
+            Padding = new Padding(padding),
+            Margin = Padding.Empty
+        };
+        // Sem estilo, a coluna cresce com o texto mais longo e empurra as tabelas para fora do cartão.
+        card.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        return card;
+    }
 
     private static Control SectionTitle(string title, string subtitle)
     {

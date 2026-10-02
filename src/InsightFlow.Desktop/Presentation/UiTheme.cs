@@ -65,7 +65,6 @@ internal static class UiTheme
         Text = text,
         AutoSize = false,
         TextAlign = ContentAlignment.MiddleLeft,
-        Dock = DockStyle.Top,
         Height = 43,
         Padding = new Padding(14, 0, 8, 0),
         FlatStyle = FlatStyle.Flat,
@@ -101,8 +100,9 @@ internal static class UiTheme
         combo.DrawMode = DrawMode.OwnerDrawFixed;
         combo.DrawItem += (_, e) =>
         {
-            e.DrawBackground();
-            using var background = new SolidBrush(Elevated);
+            // Na lista aberta, o item sob o cursor ou o teclado precisa se distinguir dos demais.
+            var highlighted = (e.State & DrawItemState.Selected) != 0 && (e.State & DrawItemState.ComboBoxEdit) == 0;
+            using var background = new SolidBrush(highlighted ? StrongBorder : Elevated);
             using var foreground = new SolidBrush(Ink);
             e.Graphics.FillRectangle(background, e.Bounds);
             if (e.Index >= 0)
@@ -147,7 +147,9 @@ internal static class UiTheme
             SelectionForeColor = InkMuted,
             Padding = new Padding(6),
             Font = Font(8.5f, true),
-            Alignment = DataGridViewContentAlignment.MiddleLeft
+            Alignment = DataGridViewContentAlignment.MiddleLeft,
+            // Títulos longos quebram em duas linhas em vez de terminar em reticências.
+            WrapMode = DataGridViewTriState.True
         },
         DefaultCellStyle = new DataGridViewCellStyle
         {

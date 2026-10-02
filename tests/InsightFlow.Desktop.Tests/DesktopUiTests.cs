@@ -107,6 +107,116 @@ public sealed class DesktopUiTests
         Assert.Equal(7, Field<DataGridView>(form, "_backtest").Rows[0].Cells[0].Value);
     });
 
+    [Fact]
+    public Task Every_screen_finishes_its_layout_so_dpi_scaling_reaches_all_controls() => OnUiThread(() =>
+    {
+        using var http = new HttpClient(RecordingHttpMessageHandler.ReturningJson("[]")) { BaseAddress = new Uri("https://api.example.test") };
+        var session = new UserSession(); session.Start("test-token");
+        var api = new InsightFlowApiClient(http, session);
+        Form[] screens =
+        [
+            new LoginForm(api, session, http.BaseAddress), new MainForm(api, session, http.BaseAddress), new AlertsForm(api, session),
+            new NotificationsForm(api, session, new Dictionary<Guid, string>()), new PortfolioForm(api, session, []), new ChatForm(api, session)
+        ];
+        foreach (var screen in screens)
+        {
+            using (screen)
+            {
+                Assert.Equal(AutoScaleMode.Dpi, screen.AutoScaleMode);
+                // Com o layout ainda suspenso, o painel raiz manteria o tamanho inicial em vez de ocupar a área da janela.
+                Assert.Equal(screen.ClientSize, screen.Controls[0].Size);
+            }
+        }
+    });
+
+    [Fact]
+    public Task Portfolio_grids_sort_by_value_and_a_failed_refresh_does_not_keep_old_totals() => OnUiThread(() =>
+    {
+        var petr = new AssetResponse { Id = Guid.NewGuid(), Ticker = "PETR4", Nome = "Petrobras", Tipo = "ACAO", Moeda = "BRL" };
+        var valeId = Guid.NewGuid();
+        var profitabilityFails = false;
+        string Operation(Guid assetId, string date, string quantity, string price) =>
+            $$"""{"id":"{{Guid.NewGuid()}}","ativo_id":"{{assetId}}","tipo":"COMPRA","quantidade":"{{quantity}}","preco_unitario":"{{price}}","data":"{{date}}","criado_em":"{{date}}T18:00:00Z"}""";
+        var handler = new RecordingHttpMessageHandler((request, _) => Task.FromResult(request.Uri.AbsolutePath switch
+        {
+            "/api/v1/portfolio/posicoes" => RecordingHttpMessageHandler.Json($$"""
+                [{"ativo_id":"{{petr.Id}}","ticker":"PETR4","quantidade":"10","preco_medio":"38.25","cotacao_atual":"40","valor_mercado":"400","valor_mercado_brl":"400","lucro_nao_realizado":"17.5","lucro_realizado":"0"},
+                 {"ativo_id":"{{valeId}}","ticker":"VALE3","quantidade":"20","preco_medio":"65","cotacao_atual":"65","valor_mercado":"1300","valor_mercado_brl":"1300","lucro_nao_realizado":"0","lucro_realizado":"0"}]
+                """),
+            "/api/v1/portfolio/rentabilidade" when profitabilityFails => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable),
+            "/api/v1/portfolio/rentabilidade" => RecordingHttpMessageHandler.Json(
+                """{"custo_base_brl":"1682.50","valor_mercado_brl":"1700","lucro_nao_realizado_brl":"17.5","lucro_realizado_brl":"0","percentual":"0.0457"}"""),
+            "/api/v1/operacoes" => RecordingHttpMessageHandler.Json(
+                $"[{Operation(petr.Id, "2026-09-15", "10", "38.25")},{Operation(valeId, "2026-10-01", "20", "65")},{Operation(petr.Id, "2026-08-20", "2", "36")}]"),
+            _ => RecordingHttpMessageHandler.Json("""{"por_classe":{"ACAO":"1"},"por_setor":{"Energia":"0.75","N/A":"0.25"},"por_moeda":{"BRL":"1"}}""")
+        }));
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test") };
+        var session = new UserSession(); session.Start("test-token");
+        using var form = new PortfolioForm(new InsightFlowApiClient(http, session), session, [petr]);
+        form.CreateControl();
+        Invoke(form, "LoadAll");
+        PumpUntil(() => Field<int>(form, "_loading") == 0);
+
+        var operations = Field<DataGridView>(form, "_operations");
+        operations.Sort(operations.Columns["Data"]!, System.ComponentModel.ListSortDirection.Ascending);
+        // Como texto, 01/10 viria antes de 20/08.
+        Assert.Equal(["20/08/2026", "15/09/2026", "01/10/2026"], operations.Rows.Cast<DataGridViewRow>().Select(row => (string)row.Cells["Data"].FormattedValue!));
+        Assert.Equal("BRL 382,50", operations.Rows[1].Cells["Total"].FormattedValue);
+        // VALE3 não está na watchlist: o ticker vem das posições e a moeda não é presumida.
+        Assert.Equal("VALE3", operations.Rows[2].Cells["Ativo"].Value);
+        Assert.Equal("1.300,00", operations.Rows[2].Cells["Total"].FormattedValue);
+
+        var positions = Field<DataGridView>(form, "_positions");
+        positions.Sort(positions.Columns["Valor (BRL)"]!, System.ComponentModel.ListSortDirection.Ascending);
+        // Como texto, "BRL 1.300,00" viria antes de "BRL 400,00".
+        Assert.Equal(["BRL 400,00", "BRL 1.300,00"], positions.Rows.Cast<DataGridViewRow>().Select(row => (string)row.Cells["Valor (BRL)"].FormattedValue!));
+        Assert.Contains("75,00%", Field<DataGridView>(form, "_distribution").Rows.Cast<DataGridViewRow>().Select(row => (string)row.Cells["Participação"].FormattedValue!));
+        Assert.Equal("+4,57%", Field<Label>(form, "_return").Text);
+
+        profitabilityFails = true;
+        Invoke(form, "LoadAll");
+        PumpUntil(() => Field<int>(form, "_loading") == 0);
+        Assert.Equal("Indisponível", Field<Label>(form, "_return").Text);
+        Assert.Equal("Indisponível", Field<Label>(form, "_marketValue").Text);
+        Assert.Equal(2, positions.Rows.Count);
+    });
+
+    [Fact]
+    public Task Saving_the_notification_preference_updates_the_row_without_reloading_asset_details() => OnUiThread(() =>
+    {
+        var assetId = Guid.NewGuid();
+        string Item(bool notify) =>
+            $$"""{"ativo":{"id":"{{assetId}}","ticker":"PETR4","nome":"Petrobras","tipo":"ACAO","setor":null,"moeda":"BRL"},"notificar":{{(notify ? "true" : "false")}},"adicionado_em":"2026-09-16T12:00:00Z"}""";
+        var handler = new RecordingHttpMessageHandler((request, _) => Task.FromResult(request switch
+        {
+            { Method.Method: "PATCH" } => RecordingHttpMessageHandler.Json(Item(true)),
+            { Uri.AbsolutePath: "/api/v1/watchlist" } => RecordingHttpMessageHandler.Json($"[{Item(false)}]"),
+            _ when request.Uri.AbsolutePath.EndsWith("/cotacao") => RecordingHttpMessageHandler.Json(
+                """{"ticker":"PETR4","preco":"38.2","variacao":"0.5","variacao_percentual":"1.3","maxima_dia":"39","minima_dia":"37.7","volume":"150000"}"""),
+            _ => RecordingHttpMessageHandler.Json("[]")
+        }));
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test") };
+        var session = new UserSession(); session.Start("test-token");
+        using var form = new MainForm(new InsightFlowApiClient(http, session), session, http.BaseAddress);
+        form.CreateControl();
+        var work = (FormWorkScope)typeof(AsyncForm).GetField("_work", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(form)!;
+        Invoke(form, "LoadWatchlist");
+        PumpUntil(() => !work.HasPending);
+        var watch = Field<DataGridView>(form, "_watchGrid");
+        Assert.Contains("38,2", Field<Label>(form, "_quotePrice").Text);
+        var requestsBefore = handler.Requests.Count;
+
+        Field<CheckBox>(form, "_notify").Checked = true;
+        Invoke(form, "SaveNotificationPreference");
+        PumpUntil(() => !work.HasPending);
+
+        var patch = Assert.Single(handler.Requests.Skip(requestsBefore));
+        Assert.Equal(HttpMethod.Patch, patch.Method);
+        Assert.True(((WatchlistItemResponse)watch.Rows[0].Tag!).Notificar);
+        Assert.False(Field<Button>(form, "_saveNotification").Enabled);
+        Assert.Contains("38,2", Field<Label>(form, "_quotePrice").Text);
+    });
+
     private static AlertResponse Alert() => new()
     {
         Id = Guid.NewGuid(), Ativo = new AssetResponse { Id = Guid.NewGuid(), Ticker = "PETR4", Nome = "Petrobras", Tipo = "ACAO", Moeda = "BRL" },
@@ -138,6 +248,8 @@ public sealed class DesktopUiTests
         {
             try
             {
+                // O aplicativo fixa pt-BR na inicialização; os textos formatados não dependem da cultura da máquina de teste.
+                Thread.CurrentThread.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
                 using var context = new WindowsFormsSynchronizationContext();
                 SynchronizationContext.SetSynchronizationContext(context);
                 action();
