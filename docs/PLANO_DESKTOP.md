@@ -149,3 +149,21 @@ Não validado:
 - IA com provedor configurado.
 
 Pendência encontrada: uma venda maior que a posição, ou a exclusão de uma compra que deixa uma venda posterior descoberta, retorna 422 com apenas o UUID do ativo em `detail`. A tela de portfólio exibiria esse UUID como mensagem de erro. Há uma correção no desktop que troca o UUID por uma mensagem explicativa, aguardando revisão. Sugerir ao backend uma mensagem legível para `QuantidadeInsuficienteError`.
+## Revisão geral em 01/10/2026
+
+A correção do 422 de quantidade insuficiente, citada acima, entrou em `develop` e `main` (PR #1). O contrato foi reconferido no backend (`develop` e `main` no commit `a175cb6`, sem diferenças) e o backend não foi alterado. Esta revisão percorreu todo o código do desktop; o que mudou:
+
+- **Escala do Windows:** a escala de DPI era configurada antes de os controles existirem e acabava aplicada só às fontes. Em 125%, textos da barra lateral, cabeçalhos e colunas ficavam cortados e o gráfico não cabia na janela. `AsyncForm` passou a aplicar a escala depois de a tela montar seus controles, e a janela não excede mais a área útil do monitor.
+- **Ordenação das tabelas:** datas, quantidades, valores e percentuais eram gravados como texto, e clicar no título da coluna ordenava em ordem alfabética (01/10 antes de 20/08; "BRL 1.300,00" antes de "BRL 400,00"). As células agora guardam o valor tipado.
+- **Layout:** botões da barra lateral com a largura correta, cartão de cotação compacto, tabelas de sinais e backtest dentro do cartão, cabeçalhos em duas linhas, formulário de operação e de alerta com as ações visíveis sem rolagem.
+- **Portfólio:** uma atualização que falha mostra "Indisponível" nos totais em vez de manter os valores anteriores; operações de ativos fora da watchlist exibem o ticker informado pelas posições.
+- **Notificações:** a consulta periódica continua com Portfólio, Alertas ou Chat abertos; clicar no aviso da bandeja restaura a janela minimizada.
+- **Chat:** o corte do histórico nunca envia uma resposta sem a pergunta que a originou.
+- **Mensagens:** detalhes que o backend envia sem acentuação ou com nomes de campo ganharam redação própria; erros de configuração informam o motivo; indicadores e contexto de sinais aparecem como "chave: valor" em vez de JSON.
+- **Demais ajustes:** salvar a preferência de notificação não recarrega cotação e histórico; item realçado nas listas suspensas; atalhos de teclado do login sem conflito; rótulos do eixo do gráfico com casas decimais proporcionais ao intervalo.
+
+Evidência: compilação sem avisos, 75 testes aprovados (eram 40) e capturas de todas as telas em 125% com respostas simuladas. Nesta máquina o Smart App Control bloqueou algumas compilações intermediárias; a execução final rodou sem bloqueio.
+
+Não validado nesta revisão: escalas de 150% e 200%, troca de monitor com a janela aberta, e os itens que dependem do servidor (sinais gerados pelo agendador, aviso na bandeja com notificação real e IA com provedor configurado).
+
+Sugestões ao backend, sem alteração feita por este repositório: mensagem legível para `QuantidadeInsuficienteError` (hoje o `detail` é o UUID do ativo), `id` no resultado da busca e moeda nas posições.
