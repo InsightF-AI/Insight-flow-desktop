@@ -15,7 +15,7 @@ internal sealed class LoginForm : AsyncForm
     private readonly CheckBox _register = new() { Text = "Criar uma nova conta", AutoSize = true };
     private readonly Label _nameLabel = UiTheme.Label("&NOME", 8.5f, true);
     private readonly Label _status = UiTheme.Label("");
-    private readonly Button _submit = UiTheme.Button("&Entrar", true);
+    private readonly Button _submit = UiTheme.Button("E&ntrar", true);
     private bool _busy;
 
     public bool Authenticated { get; private set; }
@@ -55,16 +55,19 @@ internal sealed class LoginForm : AsyncForm
         _name.AccessibleName = "Nome";
         _email.AccessibleName = "E-mail";
         _password.AccessibleName = "Senha";
+        // Cada rótulo antecede o seu campo na ordem de tabulação: o atalho do rótulo (Alt+letra) leva ao campo certo.
         _register.TabIndex = 0;
-        _name.TabIndex = 1;
-        _email.TabIndex = 2;
-        _password.TabIndex = 3;
-        _submit.TabIndex = 4;
+        _nameLabel.TabIndex = 1;
+        _name.TabIndex = 2;
+        _email.TabIndex = 4;
+        _password.TabIndex = 6;
+        _submit.TabIndex = 7;
         AcceptButton = _submit;
         _register.CheckedChanged += (_, _) => UpdateMode();
         _submit.Click += (_, _) => Submit();
         Shown += (_, _) => _email.Focus();
         UpdateMode();
+        CompleteLayout();
     }
 
     private static Control BuildHero()
@@ -135,11 +138,13 @@ internal sealed class LoginForm : AsyncForm
         var emailLabel = UiTheme.Label("&E-MAIL", 8.5f, true);
         emailLabel.ForeColor = UiTheme.InkMuted;
         emailLabel.Margin = new Padding(0, 12, 0, 5);
+        emailLabel.TabIndex = 3;
         form.Controls.Add(emailLabel, 0, 6);
         form.Controls.Add(_email, 0, 7);
         var passwordLabel = UiTheme.Label("&SENHA", 8.5f, true);
         passwordLabel.ForeColor = UiTheme.InkMuted;
         passwordLabel.Margin = new Padding(0, 12, 0, 5);
+        passwordLabel.TabIndex = 5;
         form.Controls.Add(passwordLabel, 0, 8);
         form.Controls.Add(_password, 0, 9);
         _submit.Margin = new Padding(0, 20, 0, 12);
@@ -147,8 +152,9 @@ internal sealed class LoginForm : AsyncForm
         _submit.Height = 42;
         form.Controls.Add(_submit, 0, 10);
         _status.MaximumSize = new Size(390, 0);
+        // O aviso inicial (saída ou sessão expirada) é informativo; a cor de erro fica para falhas de validação e de login.
         _status.Text = notice ?? "";
-        _status.ForeColor = UiTheme.Error;
+        _status.ForeColor = UiTheme.InkSecondary;
         _status.AccessibleName = "Status de autenticação";
         form.Controls.Add(_status, 0, 11);
         var endpoint = UiTheme.Label($"API  {apiUrl}", 8);
@@ -169,7 +175,8 @@ internal sealed class LoginForm : AsyncForm
     private void UpdateMode()
     {
         _name.Visible = _nameLabel.Visible = _register.Checked;
-        _submit.Text = _register.Checked ? "&Criar conta" : "&Entrar";
+        // "E" já é o atalho do campo de e-mail.
+        _submit.Text = _register.Checked ? "&Criar conta" : "E&ntrar";
         _password.PlaceholderText = _register.Checked ? "De 8 a 128 caracteres" : "Sua senha";
     }
 

@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Net;
-using System.Text.Json;
 using InsightFlow.Desktop.Api;
 using InsightFlow.Desktop.Api.Contracts;
 using InsightFlow.Desktop.Presentation;
@@ -30,6 +29,7 @@ internal sealed partial class MainForm : AsyncForm
     private bool _pollingNotifications;
     private bool _notificationsSeeded;
     private bool _dialogOpen;
+    private FormWindowState _restoredState = FormWindowState.Normal;
 
     public bool LogoutRequested { get; private set; }
     public bool SessionExpired { get; private set; }
@@ -72,8 +72,12 @@ internal sealed partial class MainForm : AsyncForm
         _checkConnection.Click += (_, _) => CheckConnection();
         _analysisButton.Click += (_, _) => LoadAnalysis();
         _notificationTimer.Tick += (_, _) => PollNotifications();
-        _tray.BalloonTipClicked += (_, _) => OpenNotifications();
-        _tray.DoubleClick += (_, _) => OpenNotifications();
+        _tray.BalloonTipClicked += (_, _) => OpenNotificationsFromTray();
+        _tray.DoubleClick += (_, _) => OpenNotificationsFromTray();
+        Resize += (_, _) =>
+        {
+            if (WindowState != FormWindowState.Minimized) _restoredState = WindowState;
+        };
         Shown += (_, _) =>
         {
             CheckConnection();
@@ -85,8 +89,6 @@ internal sealed partial class MainForm : AsyncForm
         FormClosed += (_, _) =>
         {
             StopNotifications();
-            _notificationTimer.Dispose();
-            _tray.Dispose();
             _session.Clear();
             _watchlist.Clear();
             _searchResults.Items.Clear();
@@ -97,6 +99,7 @@ internal sealed partial class MainForm : AsyncForm
             _backtest.Rows.Clear();
         };
         UpdateActions();
+        CompleteLayout();
     }
 
     private void CheckConnection()
@@ -239,7 +242,10 @@ internal sealed partial class MainForm : AsyncForm
                 if (!IsCurrentSession) return;
                 var index = _watchlist.FindIndex(existing => existing.Ativo.Id == item.Ativo.Id);
                 if (index >= 0) _watchlist[index] = updated;
-                BindWatchlist(item.Ativo.Id);
+                // A preferência não muda cotação nem histórico: a linha é atualizada sem recarregar os detalhes do ativo.
+                var row = _watchGrid.Rows.Cast<DataGridViewRow>().FirstOrDefault(candidate => ReferenceEquals(candidate.Tag, item));
+                if (row is not null) row.Tag = updated;
+                if (SelectedItem?.Ativo.Id == updated.Ativo.Id) _notify.Checked = updated.Notificar;
                 SetStatus(_watchStatus, enabled
                     ? "Preferência salva. Sinais deste ativo aparecerão em Notificações."
                     : "Preferência salva. Este ativo não gerará notificações de sinais.");
@@ -364,8 +370,8 @@ internal sealed partial class MainForm : AsyncForm
             _indicators.Rows.Clear();
             foreach (var indicator in indicators)
             {
-                _indicators.Rows.Add(indicator.Tipo, Number(indicator.Valor), indicator.DataCalculo.LocalDateTime,
-                    JsonSummary(indicator.Parametros), JsonSummary(indicator.ValoresAuxiliares));
+                _indicators.Rows.Add(IndicatorLabel(indicator.Tipo), indicator.Valor, indicator.DataCalculo.LocalDateTime,
+                    JsonText.Summary(indicator.Parametros), JsonText.Summary(indicator.ValoresAuxiliares));
             }
             SetStatus(_indicatorStatus, indicators.Count == 0
                 ? "Nenhum indicador disponível para este ativo."
@@ -392,7 +398,7 @@ internal sealed partial class MainForm : AsyncForm
                 {
                     var index = _signals.Rows.Add(signal.RegraNome,
                         signal.DataDesativacao is null ? "Ativo" : "Desativado",
-                        signal.DataAtivacao.LocalDateTime, signal.RegraDescricao);
+                        signal.DataAtivacao.LocalDateTime, signal.RegraDescricao, JsonText.Summary(signal.Contexto));
                     _signals.Rows[index].Tag = signal;
                 }
                 if (_signals.Rows.Count > 0) _signals.CurrentCell = _signals.Rows[0].Cells[0];
@@ -517,7 +523,7 @@ internal sealed partial class MainForm : AsyncForm
 
     private void PollNotifications()
     {
-        if (_pollingNotifications || _dialogOpen || !IsCurrentSession) return;
+        if (_pollingNotifications || !IsCurrentSession) return;
         _pollingNotifications = true;
         Run(async cancellationToken =>
         {
@@ -545,7 +551,8 @@ internal sealed partial class MainForm : AsyncForm
             }
             catch (ApiException exception) when (exception.StatusCode == HttpStatusCode.Unauthorized)
             {
-                if (IsCurrentSession) EndSession(true);
+                // Com um módulo aberto, a tela ativa encerra a sessão na próxima consulta; a principal não fecha por baixo dela.
+                if (IsCurrentSession && !_dialogOpen) EndSession(true);
             }
             catch (Exception) when (!cancellationToken.IsCancellationRequested)
             {
@@ -636,12 +643,12 @@ internal sealed partial class MainForm : AsyncForm
     private static string NullablePercent(decimal? value) =>
         value is null ? "Indisponível" : value.Value.ToString("+#,0.##;-#,0.##;0", CultureInfo.CurrentCulture) + "%";
 
-    private static string JsonSummary(JsonElement? value)
+    private static string IndicatorLabel(string type) => type switch
     {
-        if (value is null || value.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return "—";
-        var text = value.Value.GetRawText();
-        return text.Length <= 120 ? text : text[..117] + "…";
-    }
+        "BOLLINGER" => "Bollinger",
+        "VOLUME_RELATIVO" => "Volume relativo",
+        _ => type
+    };
 
     private void OpenAlerts()
     {
@@ -658,6 +665,14 @@ internal sealed partial class MainForm : AsyncForm
         ShowModule(form, () => form.SessionExpired);
         // Leituras feitas na tela atualizam o contador sem esperar a próxima rodada.
         PollNotifications();
+    }
+
+    private void OpenNotificationsFromTray()
+    {
+        // O aviso pode ser clicado com a janela minimizada; a tela de notificações precisa de uma janela visível por trás.
+        if (WindowState == FormWindowState.Minimized) WindowState = _restoredState;
+        Activate();
+        OpenNotifications();
     }
 
     private void OpenPortfolio()
@@ -692,6 +707,16 @@ internal sealed partial class MainForm : AsyncForm
     {
         label.Text = text;
         label.ForeColor = error ? UiTheme.Error : UiTheme.Muted;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _notificationTimer.Dispose();
+            _tray.Dispose();
+        }
+        base.Dispose(disposing);
     }
 
     private sealed record SearchResult(SearchAssetResponse Asset)

@@ -78,7 +78,7 @@ internal sealed class PriceHistoryChart : Control
             var y = plot.Top + plot.Height * tick / 4;
             var value = _series.Maximum - (_series.Maximum - _series.Minimum) * tick / 4;
             g.DrawLine(gridPen, plot.Left, y, plot.Right, y);
-            var label = AxisNumber(value);
+            var label = AxisNumber(value, (_series.Maximum - _series.Minimum) / 4);
             var size = g.MeasureString(label, Font);
             g.DrawString(label, Font, textBrush, plot.Left - size.Width - 6 * DpiScale, y - size.Height / 2);
         }
@@ -123,9 +123,14 @@ internal sealed class PriceHistoryChart : Control
         ? plot.Left + plot.Width / 2
         : plot.Left + plot.Width * index / (_series.Points.Count - 1);
 
-    private static string AxisNumber(double value) => value != 0 && (Math.Abs(value) < 0.0001 || Math.Abs(value) >= 1_000_000)
-        ? value.ToString("0.###E+0", CultureInfo.CurrentCulture)
-        : value.ToString("#,0.########", CultureInfo.CurrentCulture);
+    // As casas decimais acompanham o intervalo entre as marcas: os rótulos ficam uniformes e cabem na margem do eixo.
+    internal static string AxisNumber(double value, double step)
+    {
+        if (value != 0 && (Math.Abs(value) < 0.0001 || Math.Abs(value) >= 1_000_000))
+            return value.ToString("0.###E+0", CultureInfo.CurrentCulture);
+        var decimals = step > 0 && double.IsFinite(step) ? Math.Clamp((int)Math.Ceiling(-Math.Log10(step)) + 1, 0, 8) : 2;
+        return value.ToString("N" + decimals, CultureInfo.CurrentCulture);
+    }
 
     protected override void OnMouseMove(MouseEventArgs e)
     {

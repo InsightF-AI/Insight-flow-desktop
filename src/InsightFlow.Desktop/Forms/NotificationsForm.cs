@@ -41,6 +41,7 @@ internal sealed class NotificationsForm : AsyncForm
         Shown += (_, _) => LoadNotifications();
         FormClosed += (_, _) => { _grid.Rows.Clear(); _detail.Clear(); };
         UpdateActions();
+        CompleteLayout();
     }
 
     private void BuildLayout()
@@ -56,9 +57,10 @@ internal sealed class NotificationsForm : AsyncForm
         _detail.Font = UiTheme.Font(9.5f);
         _detail.AccessibleName = "Detalhes da notificação selecionada";
 
-        foreach (var (name, weight) in new[] { ("Data", 80f), ("Tipo", 80f), ("Ativo", 55f), ("Mensagem", 220f), ("Situação", 60f) })
+        _grid.Columns.Add(GridCells.Column("Data", 125f, typeof(DateTime), GridCells.DateTime));
+        foreach (var (name, weight) in new[] { ("Tipo", 115f), ("Ativo", 65f), ("Mensagem", 190f), ("Situação", 90f) })
         {
-            _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = name, HeaderText = name.ToUpperInvariant(), FillWeight = weight });
+            _grid.Columns.Add(GridCells.Column(name, weight));
         }
         _grid.AccessibleName = "Notificações recebidas";
 
@@ -136,7 +138,7 @@ internal sealed class NotificationsForm : AsyncForm
             // A API já ordena da mais recente para a mais antiga; a ordenação local mantém isso após atualizações.
             foreach (var notification in notifications.OrderByDescending(item => item.CriadoEm))
             {
-                var index = _grid.Rows.Add(notification.CriadoEm.LocalDateTime.ToString("dd/MM/yyyy HH:mm"), TypeLabel(notification.Tipo),
+                var index = _grid.Rows.Add(notification.CriadoEm.LocalDateTime, TypeLabel(notification.Tipo),
                     Ticker(notification.AtivoId), notification.Mensagem, notification.Lida ? "Lida" : "Não lida");
                 var row = _grid.Rows[index];
                 row.Tag = notification;

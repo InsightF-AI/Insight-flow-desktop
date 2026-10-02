@@ -19,13 +19,13 @@ O tema escuro é a base inicial. O web também oferece tema claro; essa alternâ
 | Padrão no exemplar web | Aplicação no desktop atual |
 |---|---|
 | Login dividido entre imagem/mercado e formulário | Painel desenhado localmente com grade e linha de mercado; formulário escuro ao lado |
-| Sidebar agrupada em Principal, Alertas e Ferramentas | Mesmos grupos e ordem; módulos sem contrato aparecem desabilitados |
+| Sidebar agrupada em Principal, Alertas e Ferramentas | Mesmos grupos e ordem; somente Configurações, ainda sem módulo, aparece desabilitado |
 | Busca global na topbar | Busca por ticker/nome usando o endpoint documentado |
 | Dashboard com vários cards e dados mockados | Watchlist, cotação e OHLCV reais; cards sem dados reais não são exibidos |
-| Card de ativo com preço e variação | Resumo do ativo selecionado, com moeda, mínima, máxima e volume |
+| Card de ativo com preço e variação | Resumo compacto do ativo selecionado: ativo à esquerda, preço e variação à direita, e mínima, máxima e volume abaixo |
 | Gráfico e períodos rápidos | Período selecionável, gráfico de fechamento/volume e tabela OHLCV; desenho nativo do Windows Forms |
 | Feedback de queries e mutations | Mensagens de carregamento, vazio, erro e confirmação junto ao componente afetado |
-| Navegação para Portfólio, Alertas e Chat IA | Alertas abre o CRUD; Portfólio e Chat IA aguardam contratos |
+| Navegação para Portfólio, Alertas e Chat IA | Cada item abre o seu módulo integrado: Portfólio, Alertas, Notificações e Chat IA |
 
 ## Fluxo principal
 
@@ -43,7 +43,8 @@ O tema escuro é a base inicial. O web também oferece tema claro; essa alternâ
 - Conteúdo de IA usa destaque violeta e sempre mostra o aviso legal obrigatório.
 - Portfólio deve declarar que as operações são simuladas e manter valores, moeda e benchmark fornecidos pelo backend.
 - Sinais usam âmbar/azul para contexto; verde e vermelho ficam reservados a valores positivos/negativos, sem sugerir compra ou venda.
-- A tabela preserva os tipos de data e decimal para permitir ordenação correta; formatação pt-BR ocorre somente na apresentação.
+- A tabela preserva os tipos de data e decimal para permitir ordenação correta; formatação pt-BR ocorre somente na apresentação. As colunas são criadas com `GridCells`, que guarda o valor tipado e aplica o formato (moeda por linha, quando ela varia) no estilo da célula.
+- Toda tela herda de `AsyncForm` e chama `CompleteLayout()` ao fim do construtor. É nesse ponto que a escala de DPI é aplicada aos controles; sem a chamada, o layout da tela permanece suspenso.
 - Cores nunca são o único indicador. Rótulos, sinais e mensagens devem continuar compreensíveis sem distinção cromática.
 - Teclado, foco visível, DPI e redimensionamento da janela fazem parte do aceite de cada tela.
 
@@ -53,5 +54,5 @@ O tema escuro é a base inicial. O web também oferece tema claro; essa alternâ
 - avaliar biblioteca para candles, zoom e sobreposição de séries; fechamento e volume já têm visualização nativa;
 - definir comportamento da sidebar recolhível no desktop;
 - validar tema claro e persistência da preferência;
-- validar a interface em 125%, 150% e 200% de escala do Windows;
-- desenhar estados de Portfólio, Chat IA e Configurações quando seus contratos estiverem disponíveis.
+- validar a interface em 150% e 200% de escala do Windows (125% conferido em 01/10/2026) e ao mover a janela entre monitores com escalas diferentes;
+- desenhar a tela de Configurações quando houver preferências a persistir.

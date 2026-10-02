@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net;
 using InsightFlow.Desktop.Api;
 using InsightFlow.Desktop.Api.Contracts;
@@ -45,12 +44,13 @@ internal sealed class AlertsForm : AsyncForm
         Shown += (_, _) => LoadAlerts();
         FormClosed += (_, _) => _grid.Rows.Clear();
         BeginNew();
+        CompleteLayout();
     }
 
     private void BuildLayout()
     {
         Text = "InsightFlow — Alertas de preço";
-        ClientSize = new Size(980, 620);
+        ClientSize = new Size(980, 700);
         MinimumSize = new Size(850, 520);
         BackColor = UiTheme.Background;
         UiTheme.StyleInput(_ticker);
@@ -66,10 +66,11 @@ internal sealed class AlertsForm : AsyncForm
         ]);
         _condition.SelectedIndex = 0;
 
-        foreach (var (name, weight) in new[] { ("Ativo", 65f), ("Condição", 130f), ("Preço-alvo", 85f), ("Estado", 75f), ("Último disparo", 105f) })
-        {
-            _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = name, HeaderText = name.ToUpperInvariant(), FillWeight = weight });
-        }
+        _grid.Columns.Add(GridCells.Column("Ativo", 60f));
+        _grid.Columns.Add(GridCells.Column("Condição", 90f));
+        _grid.Columns.Add(GridCells.Column("Preço-alvo", 100f, typeof(decimal)));
+        _grid.Columns.Add(GridCells.Column("Estado", 120f));
+        _grid.Columns.Add(GridCells.Column("Último disparo", 125f, typeof(DateTime), GridCells.DateTime));
         _grid.AccessibleName = "Alertas de preço cadastrados";
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(22), BackColor = UiTheme.Background };
@@ -95,6 +96,8 @@ internal sealed class AlertsForm : AsyncForm
         split.Panel1.Controls.Add(_grid);
         split.Panel2.BackColor = UiTheme.Surface;
         split.Panel2.Padding = new Padding(18);
+        // Em janelas baixas, as ações e a observação continuam alcançáveis por rolagem.
+        split.Panel2.AutoScroll = true;
         split.Panel2.Controls.Add(BuildEditor());
         root.Controls.Add(split, 0, 1);
         _status.Dock = DockStyle.Fill;
@@ -164,12 +167,14 @@ internal sealed class AlertsForm : AsyncForm
         try
         {
             _grid.Rows.Clear();
-            foreach (var alert in alerts.OrderBy(alert => alert.Ativo.Ticker))
+            foreach (var alert in alerts.OrderBy(alert => alert.Ativo.Ticker).ThenBy(alert => alert.CriadoEm))
             {
-                var index = _grid.Rows.Add(alert.Ativo.Ticker, ConditionLabel(alert.TipoCondicao),
-                    $"{alert.MoedaAlvo} {Number(alert.ValorAlvo)}", StateLabel(alert),
-                    alert.DisparadoEm?.LocalDateTime.ToString("dd/MM/yyyy HH:mm") ?? "—");
-                _grid.Rows[index].Tag = alert;
+                var index = _grid.Rows.Add(alert.Ativo.Ticker, ConditionLabel(alert.TipoCondicao), alert.ValorAlvo, StateLabel(alert));
+                var added = _grid.Rows[index];
+                added.SetFormat(GridCells.Money(alert.MoedaAlvo), "Preço-alvo");
+                // Sem disparo, a célula fica vazia e a grade exibe "—".
+                if (alert.DisparadoEm is { } fired) added.Cells["Último disparo"].Value = fired.LocalDateTime;
+                added.Tag = alert;
             }
 
             var row = preferredId is null
@@ -355,6 +360,5 @@ internal sealed class AlertsForm : AsyncForm
     private static string StateLabel(AlertResponse alert) =>
         !alert.Habilitado ? "Desabilitado" : alert.UltimoEstado ? "Condição atingida" : "Monitorando";
 
-    private static string Number(decimal value) => value.ToString("#,0.########", CultureInfo.CurrentCulture);
     private sealed record ConditionChoice(string Value, string Label);
 }
