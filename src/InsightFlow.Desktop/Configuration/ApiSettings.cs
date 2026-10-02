@@ -77,6 +77,11 @@ public sealed class ApiSettings
             baseUrl = environmentUrl;
         }
 
+        return Create(baseUrl, timeoutSeconds);
+    }
+
+    internal static ApiSettings Create(string baseUrl, int timeoutSeconds)
+    {
         if (timeoutSeconds is < 1 or > 300)
         {
             throw new InvalidOperationException("Api.TimeoutSeconds deve estar entre 1 e 300 segundos.");

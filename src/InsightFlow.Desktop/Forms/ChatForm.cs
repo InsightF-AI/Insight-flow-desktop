@@ -19,6 +19,8 @@ internal sealed class ChatForm : AsyncForm
     private readonly Button _newButton = UiTheme.Button("&Nova conversa");
     private readonly Label _notice = UiTheme.Label("As respostas são geradas por IA a partir dos dados da sua carteira e dos ativos cadastrados.", 8.5f);
     private readonly Label _status = UiTheme.Label("Pergunte sobre sua carteira ou sobre ativos acompanhados.", 9);
+    private readonly Font _speakerFont = UiTheme.Font(9, true);
+    private readonly Font _messageFont = UiTheme.Font(10);
     private bool _busy;
 
     public bool SessionExpired { get; private set; }
@@ -43,6 +45,7 @@ internal sealed class ChatForm : AsyncForm
         Shown += (_, _) => _input.Focus();
         FormClosed += (_, _) => { _history.Clear(); _transcript.Clear(); };
         UpdateActions();
+        CompleteLayout();
     }
 
     private void BuildLayout()
@@ -106,8 +109,7 @@ internal sealed class ChatForm : AsyncForm
         if (_busy || !IsCurrentSession || text.Length == 0) return;
 
         var question = new ChatMessage(InsightFlowApiClient.ChatUser, text);
-        // O backend aceita uma janela limitada; as mensagens mais antigas saem primeiro.
-        var conversation = _history.Append(question).TakeLast(InsightFlowApiClient.ChatMaxMessages).ToArray();
+        var conversation = Window(_history, question);
         AppendMessage("Você", text, UiTheme.Accent);
         _input.Clear();
         SetBusy(true);
@@ -131,6 +133,12 @@ internal sealed class ChatForm : AsyncForm
         }, exception => HandleError(exception, text));
     }
 
+    // O backend aceita uma janela limitada; as mensagens mais antigas saem primeiro. O corte nunca deixa
+    // uma resposta sem a pergunta que a originou no início da conversa enviada.
+    internal static ChatMessage[] Window(IEnumerable<ChatMessage> history, ChatMessage question) =>
+        history.Append(question).TakeLast(InsightFlowApiClient.ChatMaxMessages)
+            .SkipWhile(message => message.Papel != InsightFlowApiClient.ChatUser).ToArray();
+
     private void NewConversation()
     {
         if (_busy) return;
@@ -145,10 +153,10 @@ internal sealed class ChatForm : AsyncForm
         if (_transcript.TextLength > 0) _transcript.AppendText(Environment.NewLine + Environment.NewLine);
         _transcript.SelectionStart = _transcript.TextLength;
         _transcript.SelectionColor = color;
-        _transcript.SelectionFont = UiTheme.Font(9, true);
+        _transcript.SelectionFont = _speakerFont;
         _transcript.AppendText(speaker + Environment.NewLine);
         _transcript.SelectionColor = UiTheme.Ink;
-        _transcript.SelectionFont = UiTheme.Font(10);
+        _transcript.SelectionFont = _messageFont;
         _transcript.AppendText(text.ReplaceLineEndings(Environment.NewLine));
         _transcript.ScrollToCaret();
     }
@@ -187,5 +195,15 @@ internal sealed class ChatForm : AsyncForm
     {
         _status.Text = text;
         _status.ForeColor = error ? UiTheme.Error : UiTheme.InkMuted;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _speakerFont.Dispose();
+            _messageFont.Dispose();
+        }
+        base.Dispose(disposing);
     }
 }

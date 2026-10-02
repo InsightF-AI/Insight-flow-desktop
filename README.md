@@ -29,7 +29,15 @@ dotnet src/InsightFlow.Desktop/bin/Debug/net10.0-windows/InsightFlow.Desktop.dll
 
 O mesmo bloqueio pode atingir a DLL depois de uma alteração no código, impedindo também `dotnet test`. Nesse caso, rode os testes no CI ou em outra máquina.
 
-A variável de ambiente tem precedência sobre [appsettings.json](src/InsightFlow.Desktop/appsettings.json). Fora de loopback, a URL deve usar HTTPS. Senhas são enviadas apenas no cadastro/login; o token fica em memória e é apagado ao sair. O aplicativo não inclui credenciais de demonstração nem inicia o backend automaticamente.
+A variável de ambiente tem precedência sobre [appsettings.json](src/InsightFlow.Desktop/appsettings.json). Fora de loopback, a URL deve usar HTTPS. Senhas são enviadas apenas no cadastro/login; o token fica em memória e é apagado ao sair. O aplicativo não inclui credenciais de demonstração nem inicia o backend automaticamente. Se a configuração for inválida, a mensagem de inicialização informa o motivo.
+
+Para gerar uma pasta distribuível (requer o runtime .NET 10 Desktop na máquina de destino):
+
+```powershell
+dotnet publish src/InsightFlow.Desktop -c Release -r win-x64 --self-contained false -o publish
+```
+
+O executável gerado não é assinado; instalador, assinatura e ícone oficial continuam pendentes.
 
 ## Primeiro fluxo implementado
 
@@ -43,9 +51,11 @@ A variável de ambiente tem precedência sobre [appsettings.json](src/InsightFlo
 8. Registrar operações simuladas e acompanhar posições, rentabilidade, comparação com CDI/Ibovespa e distribuição da carteira.
 9. Gerar a análise por IA de um ativo e conversar com o Chat IA, sempre com o aviso legal retornado pela API.
 
-O fluxo usa endpoints reais, com erros e indisponibilidade apresentados na interface. O contrato foi conferido no código da branch `develop` do backend em 30/09/2026, mas a integração com um servidor da equipe em execução ainda precisa ser validada. A IA depende de estar habilitada no servidor.
+O fluxo usa endpoints reais, com erros e indisponibilidade apresentados na interface. O contrato foi conferido no código da branch `develop` do backend (commit `a175cb6`) e exercitado contra uma instância local desse backend em 30/09/2026; em 01/10/2026 o contrato foi reconferido sem diferenças. A integração com um servidor mantido pela equipe ainda precisa ser validada. A IA depende de estar habilitada no servidor.
 
-Ainda pendentes: validação contra a API executada pela equipe, notificações com o app fechado, histórico de dividendos e empacotamento para distribuição. Consulte o plano para as dependências de cada módulo.
+As tabelas guardam datas e valores tipados: clicar no título de uma coluna ordena pelo valor, e não pelo texto exibido. As janelas acompanham a escala do Windows (conferido em 125%; 150% e 200% ainda sem validação).
+
+Ainda pendentes: validação contra a API executada pela equipe, sinais e IA com dados reais, notificações com o app fechado, histórico de dividendos, instalador e assinatura do executável. Consulte o plano para as dependências de cada módulo.
 
 ## Estrutura
 
@@ -55,13 +65,13 @@ src/InsightFlow.Desktop/
   Api/                 Cliente HTTP e contratos JSON
   Configuration/       Configuração da API
   Forms/               Login/cadastro, janela principal, alertas, notificações, portfólio e chat
-  Presentation/        Apoio à apresentação
+  Presentation/        Tema, gráfico, formatos das tabelas e mensagens de erro
   Session/             Sessão mantida em memória
 tests/InsightFlow.Desktop.Tests/
 docs/
 ```
 
-O aplicativo usa os componentes do .NET/Windows Forms, sem bibliotecas externas em runtime. Os testes usam xUnit com respostas HTTP controladas; eles não acessam contas reais. Os contratos automatizados cobrem autenticação, sessão, busca, watchlist, análise técnica, alertas, notificações, portfólio, IA, erros, cancelamento e respostas sem corpo.
+O aplicativo usa os componentes do .NET/Windows Forms, sem bibliotecas externas em runtime. Os testes usam xUnit com respostas HTTP controladas; eles não acessam contas reais. Os contratos automatizados cobrem autenticação, sessão, busca, watchlist, análise técnica, alertas, notificações, portfólio, IA, erros, cancelamento e respostas sem corpo. Há também testes da configuração da URL, das mensagens de erro, dos formatos de apresentação e das telas (ordenação das tabelas, layout e fluxos assíncronos).
 
 ## Validar
 
@@ -69,7 +79,7 @@ O aplicativo usa os componentes do .NET/Windows Forms, sem bibliotecas externas 
 dotnet test InsightFlow.Desktop.sln
 ```
 
-O workflow em [.github/workflows/desktop.yml](.github/workflows/desktop.yml) prepara build e testes no Windows após o envio ao GitHub. Ele ainda não foi executado no serviço remoto. Configuração das actions segue as referências oficiais de [setup-dotnet](https://github.com/actions/setup-dotnet) e [checkout](https://github.com/actions/checkout).
+O workflow em [.github/workflows/desktop.yml](.github/workflows/desktop.yml) executa build e testes no Windows em cada pull request e nos envios para `main` e `develop`. Configuração das actions segue as referências oficiais de [setup-dotnet](https://github.com/actions/setup-dotnet) e [checkout](https://github.com/actions/checkout).
 
 ## Documentação
 

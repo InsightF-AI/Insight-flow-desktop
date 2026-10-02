@@ -13,6 +13,7 @@ internal sealed class PortfolioForm : AsyncForm
     private readonly UserSession _session;
     private readonly int _sessionVersion;
     private readonly IReadOnlyDictionary<Guid, AssetResponse> _assets;
+    private readonly Dictionary<Guid, string> _tickers;
     private readonly DataGridView _positions = UiTheme.Grid();
     private readonly DataGridView _operations = UiTheme.Grid();
     private readonly DataGridView _distribution = UiTheme.Grid();
@@ -51,6 +52,7 @@ internal sealed class PortfolioForm : AsyncForm
         _session = session;
         _sessionVersion = session.Version;
         _assets = assets.GroupBy(asset => asset.Id).ToDictionary(group => group.Key, group => group.First());
+        _tickers = _assets.ToDictionary(pair => pair.Key, pair => pair.Value.Ticker);
         BuildLayout();
         _refreshButton.Click += (_, _) => LoadAll();
         _registerButton.Click += (_, _) => Register();
@@ -61,6 +63,7 @@ internal sealed class PortfolioForm : AsyncForm
         Shown += (_, _) => LoadAll();
         FormClosed += (_, _) => { _positions.Rows.Clear(); _operations.Rows.Clear(); _distribution.Rows.Clear(); };
         UpdateActions();
+        CompleteLayout();
     }
 
     private void BuildLayout()
@@ -111,17 +114,16 @@ internal sealed class PortfolioForm : AsyncForm
         metrics.Controls.Add(MetricBlock("LUCRO REALIZADO", _realized));
         metrics.Controls.Add(MetricBlock("RENTABILIDADE", _return));
         panel.Controls.Add(metrics, 0, 0);
+        _positions.Columns.Add(GridCells.Column("Ativo", 55f));
+        _positions.Columns.Add(GridCells.Column("Quantidade", 90f, typeof(decimal), GridCells.Number, true));
         foreach (var (name, weight) in new[]
                  {
-                     ("Ativo", 60f), ("Quantidade", 75f), ("Preço médio", 85f), ("Cotação", 80f), ("Valor de mercado", 95f),
+                     ("Preço médio", 85f), ("Cotação", 80f), ("Valor de mercado", 95f),
                      ("Valor (BRL)", 90f), ("Lucro não realizado", 100f), ("Lucro realizado", 90f)
                  })
         {
-            _positions.Columns.Add(new DataGridViewTextBoxColumn
-            {
-                Name = name, HeaderText = name.ToUpperInvariant(), FillWeight = weight,
-                DefaultCellStyle = { Alignment = name == "Ativo" ? DataGridViewContentAlignment.MiddleLeft : DataGridViewContentAlignment.MiddleRight }
-            });
+            // A moeda varia por ativo: o formato monetário é definido em cada linha.
+            _positions.Columns.Add(GridCells.Column(name, weight, typeof(decimal), alignRight: true));
         }
         _positions.AccessibleName = "Posições da carteira";
         panel.Controls.Add(_positions, 0, 1);
@@ -132,14 +134,12 @@ internal sealed class PortfolioForm : AsyncForm
 
     private Control BuildOperationsTab()
     {
-        foreach (var (name, weight) in new[] { ("Data", 70f), ("Ativo", 60f), ("Tipo", 55f), ("Quantidade", 75f), ("Preço unitário", 85f), ("Total", 85f) })
-        {
-            _operations.Columns.Add(new DataGridViewTextBoxColumn
-            {
-                Name = name, HeaderText = name.ToUpperInvariant(), FillWeight = weight,
-                DefaultCellStyle = { Alignment = name is "Data" or "Ativo" or "Tipo" ? DataGridViewContentAlignment.MiddleLeft : DataGridViewContentAlignment.MiddleRight }
-            });
-        }
+        _operations.Columns.Add(GridCells.Column("Data", 70f, typeof(DateTime), GridCells.Date));
+        _operations.Columns.Add(GridCells.Column("Ativo", 60f));
+        _operations.Columns.Add(GridCells.Column("Tipo", 55f));
+        _operations.Columns.Add(GridCells.Column("Quantidade", 90f, typeof(decimal), GridCells.Number, true));
+        _operations.Columns.Add(GridCells.Column("Preço unitário", 85f, typeof(decimal), alignRight: true));
+        _operations.Columns.Add(GridCells.Column("Total", 85f, typeof(decimal), alignRight: true));
         _operations.AccessibleName = "Operações registradas";
 
         var left = Card(2);
@@ -165,28 +165,38 @@ internal sealed class PortfolioForm : AsyncForm
         _date.MaxDate = DateTime.Today;
         _date.Value = DateTime.Today;
 
-        var editor = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, AutoSize = true, BackColor = UiTheme.Surface };
-        editor.Controls.Add(UiTheme.Label("NOVA OPERAÇÃO", 9, true));
-        editor.Controls.Add(FieldLabel("Ativo"));
-        editor.Controls.Add(_asset);
-        editor.Controls.Add(FieldLabel("Tipo"));
-        editor.Controls.Add(_type);
-        editor.Controls.Add(FieldLabel("Quantidade"));
-        editor.Controls.Add(_quantity);
-        editor.Controls.Add(FieldLabel("Preço unitário (moeda do ativo)"));
-        editor.Controls.Add(_unitPrice);
-        editor.Controls.Add(FieldLabel("Data"));
-        editor.Controls.Add(_date);
+        // Campos curtos lado a lado: as ações ficam visíveis sem rolagem no tamanho padrão da janela.
+        var editor = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, AutoSize = true, BackColor = UiTheme.Surface };
+        editor.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        editor.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        void AddWide(Control control, int row)
+        {
+            editor.Controls.Add(control, 0, row);
+            editor.SetColumnSpan(control, 2);
+        }
+        AddWide(UiTheme.Label("NOVA OPERAÇÃO", 9, true), 0);
+        AddWide(FieldLabel("Ativo"), 1);
+        AddWide(_asset, 2);
+        editor.Controls.Add(FieldLabel("Tipo"), 0, 3);
+        editor.Controls.Add(FieldLabel("Data"), 1, 3);
+        _type.Margin = new Padding(3, 3, 8, 3);
+        editor.Controls.Add(_type, 0, 4);
+        editor.Controls.Add(_date, 1, 4);
+        editor.Controls.Add(FieldLabel("Quantidade"), 0, 5);
+        editor.Controls.Add(FieldLabel("Preço unitário"), 1, 5);
+        _quantity.Margin = new Padding(3, 3, 8, 3);
+        editor.Controls.Add(_quantity, 0, 6);
+        editor.Controls.Add(_unitPrice, 1, 6);
         var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, Margin = new Padding(0, 16, 0, 8) };
         actions.Controls.Add(_registerButton);
         actions.Controls.Add(_deleteButton);
-        editor.Controls.Add(actions);
+        AddWide(actions, 7);
         var note = UiTheme.Label(_assets.Count == 0
             ? "Adicione ativos à watchlist para registrar operações: a API exige o identificador interno do ativo."
-            : "Somente ativos da sua watchlist aparecem na lista. Vendas acima da quantidade em carteira são recusadas pela API.", 8.5f);
+            : "Somente ativos da sua watchlist aparecem na lista. O preço é informado na moeda do ativo. Vendas acima da quantidade em carteira são recusadas pela API.", 8.5f);
         note.ForeColor = UiTheme.InkMuted;
         note.MaximumSize = new Size(290, 0);
-        editor.Controls.Add(note);
+        AddWide(note, 8);
 
         var split = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, Size = new Size(1040, 500), SplitterDistance = 690, Panel1MinSize = 420, Panel2MinSize = 320, BackColor = UiTheme.Border };
         split.Panel1.BackColor = UiTheme.Surface;
@@ -226,14 +236,9 @@ internal sealed class PortfolioForm : AsyncForm
         var distributionTitle = UiTheme.Label("DISTRIBUIÇÃO", 9, true);
         distributionTitle.ForeColor = UiTheme.InkSecondary;
         panel.Controls.Add(distributionTitle, 0, 2);
-        foreach (var (name, weight) in new[] { ("Agrupamento", 80f), ("Categoria", 140f), ("Participação", 80f) })
-        {
-            _distribution.Columns.Add(new DataGridViewTextBoxColumn
-            {
-                Name = name, HeaderText = name.ToUpperInvariant(), FillWeight = weight,
-                DefaultCellStyle = { Alignment = name == "Participação" ? DataGridViewContentAlignment.MiddleRight : DataGridViewContentAlignment.MiddleLeft }
-            });
-        }
+        _distribution.Columns.Add(GridCells.Column("Agrupamento", 80f));
+        _distribution.Columns.Add(GridCells.Column("Categoria", 140f));
+        _distribution.Columns.Add(GridCells.Column("Participação", 80f, typeof(decimal), GridCells.Share, true));
         _distribution.AccessibleName = "Distribuição da carteira";
         panel.Controls.Add(_distribution, 0, 3);
         _distributionStatus.Dock = DockStyle.Fill;
@@ -251,12 +256,12 @@ internal sealed class PortfolioForm : AsyncForm
         SetStatus(_distributionStatus, "Carregando distribuição…");
         // Cada seção falha de forma independente: uma fonte indisponível não esconde as demais.
         LoadSection(async token => BindPositions(await _api.GetPositionsAsync(token)), _positionStatus);
-        LoadSection(async token => BindProfitability(await _api.GetProfitabilityAsync(token)), _positionStatus);
+        LoadSection(async token => BindProfitability(await _api.GetProfitabilityAsync(token)), _positionStatus, ClearProfitability);
         LoadSection(async token => BindOperations(await _api.GetOperationsAsync(token)), _operationStatus);
         LoadSection(async token => BindDistribution(await _api.GetDistributionAsync(token)), _distributionStatus);
     }
 
-    private void LoadSection(Func<CancellationToken, Task> load, Label status)
+    private void LoadSection(Func<CancellationToken, Task> load, Label status, Action? onFailure = null)
     {
         Run(async cancellationToken =>
         {
@@ -272,7 +277,11 @@ internal sealed class PortfolioForm : AsyncForm
                     UpdateActions();
                 }
             }
-        }, exception => HandleError(exception, status));
+        }, exception =>
+        {
+            if (IsCurrentSession) onFailure?.Invoke();
+            HandleError(exception, status);
+        });
     }
 
     private void BindPositions(IReadOnlyList<PositionResponse> positions)
@@ -281,13 +290,17 @@ internal sealed class PortfolioForm : AsyncForm
         _positions.Rows.Clear();
         foreach (var position in positions.OrderByDescending(position => position.ValorMercadoBrl))
         {
-            var currency = Currency(position.AtivoId);
-            var index = _positions.Rows.Add(position.Ticker, Number(position.Quantidade), Money(currency, position.PrecoMedio),
-                Money(currency, position.CotacaoAtual), Money(currency, position.ValorMercado), Money("BRL", position.ValorMercadoBrl),
-                Money(currency, position.LucroNaoRealizado), Money(currency, position.LucroRealizado));
-            _positions.Rows[index].Cells["Lucro não realizado"].Style.ForeColor = Tone(position.LucroNaoRealizado);
-            _positions.Rows[index].Tag = position;
+            _tickers[position.AtivoId] = position.Ticker;
+            var index = _positions.Rows.Add(position.Ticker, position.Quantidade, position.PrecoMedio, position.CotacaoAtual,
+                position.ValorMercado, position.ValorMercadoBrl, position.LucroNaoRealizado, position.LucroRealizado);
+            var row = _positions.Rows[index];
+            row.SetFormat(GridCells.Money(Currency(position.AtivoId)), "Preço médio", "Cotação", "Valor de mercado", "Lucro não realizado", "Lucro realizado");
+            row.SetFormat(GridCells.Money("BRL"), "Valor (BRL)");
+            row.Cells["Lucro não realizado"].Style.ForeColor = Tone(position.LucroNaoRealizado);
+            row.Tag = position;
         }
+        // As posições informam o ticker de ativos que já saíram da watchlist.
+        foreach (DataGridViewRow row in _operations.Rows) row.Cells["Ativo"].Value = Ticker(((OperationResponse)row.Tag!).AtivoId);
         SetStatus(_positionStatus, positions.Count == 0
             ? "Nenhuma posição aberta. Registre operações na aba Operações."
             : $"{positions.Count} posição(ões) aberta(s). Ativos sem cotação disponível são omitidos pela API.");
@@ -306,6 +319,16 @@ internal sealed class PortfolioForm : AsyncForm
         _return.ForeColor = Tone(profitability.Percentual);
     }
 
+    // Uma atualização que falha não deixa os totais anteriores na tela como se fossem atuais.
+    private void ClearProfitability()
+    {
+        foreach (var metric in new[] { _costBase, _marketValue, _unrealized, _realized, _return })
+        {
+            metric.Text = "Indisponível";
+            metric.ForeColor = UiTheme.InkMuted;
+        }
+    }
+
     private void BindOperations(IEnumerable<OperationResponse> operations, Guid? preferredId = null)
     {
         if (!IsCurrentSession) return;
@@ -313,10 +336,10 @@ internal sealed class PortfolioForm : AsyncForm
         _operations.Rows.Clear();
         foreach (var operation in list)
         {
-            var currency = Currency(operation.AtivoId);
-            var index = _operations.Rows.Add(operation.Data.ToString("dd/MM/yyyy", CultureInfo.CurrentCulture), Ticker(operation.AtivoId),
-                operation.Tipo == InsightFlowApiClient.OperationBuy ? "Compra" : "Venda", Number(operation.Quantidade),
-                Money(currency, operation.PrecoUnitario), Money(currency, operation.Quantidade * operation.PrecoUnitario));
+            var index = _operations.Rows.Add(operation.Data.ToDateTime(TimeOnly.MinValue), Ticker(operation.AtivoId),
+                operation.Tipo == InsightFlowApiClient.OperationBuy ? "Compra" : "Venda", operation.Quantidade,
+                operation.PrecoUnitario, operation.Quantidade * operation.PrecoUnitario);
+            _operations.Rows[index].SetFormat(GridCells.Money(Currency(operation.AtivoId)), "Preço unitário", "Total");
             _operations.Rows[index].Tag = operation;
         }
         var selected = _operations.Rows.Cast<DataGridViewRow>().FirstOrDefault(row => ((OperationResponse)row.Tag!).Id == preferredId)
@@ -334,7 +357,7 @@ internal sealed class PortfolioForm : AsyncForm
         {
             foreach (var (category, share) in values.OrderByDescending(pair => pair.Value))
             {
-                _distribution.Rows.Add(group, group == "Setor" && category == "N/A" ? "Setor não informado" : category, Percent(share, false));
+                _distribution.Rows.Add(group, group == "Setor" && category == "N/A" ? "Setor não informado" : category, share * 100);
             }
         }
         SetStatus(_distributionStatus, _distribution.Rows.Count == 0
@@ -483,14 +506,11 @@ internal sealed class PortfolioForm : AsyncForm
     }
 
     private string Currency(Guid assetId) => _assets.TryGetValue(assetId, out var asset) ? asset.Moeda : "";
-    private string Ticker(Guid assetId) => _assets.TryGetValue(assetId, out var asset) ? asset.Ticker : $"Ativo {assetId.ToString()[..8]}";
+    private string Ticker(Guid assetId) => _tickers.TryGetValue(assetId, out var ticker) ? ticker : $"Ativo {assetId.ToString()[..8]}";
 
-    private static string Number(decimal value) => value.ToString("#,0.########", CultureInfo.CurrentCulture);
-    private static string Money(string currency, decimal value) =>
-        (currency.Length == 0 ? "" : currency + " ") + value.ToString("#,0.00######", CultureInfo.CurrentCulture);
+    private static string Money(string currency, decimal value) => value.ToString(GridCells.Money(currency), CultureInfo.CurrentCulture);
     // A API envia frações (0,12 = 12%).
-    private static string Percent(decimal fraction, bool signed = true) =>
-        (fraction * 100).ToString(signed ? "+#,0.00;-#,0.00;0.00" : "#,0.00", CultureInfo.CurrentCulture) + "%";
+    private static string Percent(decimal fraction) => (fraction * 100).ToString(GridCells.SignedPercent, CultureInfo.CurrentCulture);
     private static Color Tone(decimal value) => value > 0 ? UiTheme.Up : value < 0 ? UiTheme.Down : UiTheme.Ink;
 
     private static void SetStatus(Label label, string text, bool error = false)

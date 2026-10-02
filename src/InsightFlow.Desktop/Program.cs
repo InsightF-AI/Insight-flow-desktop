@@ -19,9 +19,11 @@ internal static class Program
         {
             settings = ApiSettings.Load();
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            MessageBox.Show("Não foi possível carregar a configuração. Confira a URL e o timeout da API no appsettings.json ou na variável INSIGHTFLOW_API_URL.",
+            // ApiSettings descreve o problema em InvalidOperationException; outras falhas não expõem detalhes internos.
+            var reason = exception is InvalidOperationException ? exception.Message : "Não foi possível carregar a configuração.";
+            MessageBox.Show($"{reason}\n\nConfira a URL e o timeout da API no appsettings.json ou na variável INSIGHTFLOW_API_URL.",
                 "InsightFlow — Configuração", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }

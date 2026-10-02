@@ -65,19 +65,23 @@ public sealed class InsightFlowApiClient
         SendAsync<WatchlistItemResponse>(HttpMethod.Post, "/api/v1/watchlist", new { ticker }, true, cancellationToken);
 
     public Task RemoveFromWatchlistAsync(Guid ativoId, CancellationToken cancellationToken = default) =>
-        SendWithoutResponseAsync(HttpMethod.Delete, $"/api/v1/watchlist/{ativoId:D}", null, true, cancellationToken);
+        SendWithoutResponseAsync(HttpMethod.Delete,
+            $"/api/v1/watchlist/{RequiredId(ativoId, nameof(ativoId)):D}", null, true, cancellationToken);
 
     public Task<WatchlistItemResponse> SetNotificationsAsync(Guid ativoId, bool notificar, CancellationToken cancellationToken = default) =>
-        SendAsync<WatchlistItemResponse>(HttpMethod.Patch, $"/api/v1/watchlist/{ativoId:D}/notificacao", new { notificar }, true, cancellationToken);
+        SendAsync<WatchlistItemResponse>(HttpMethod.Patch,
+            $"/api/v1/watchlist/{RequiredId(ativoId, nameof(ativoId)):D}/notificacao", new { notificar }, true, cancellationToken);
 
     public Task<QuoteResponse> GetQuoteAsync(Guid ativoId, CancellationToken cancellationToken = default) =>
-        SendAsync<QuoteResponse>(HttpMethod.Get, $"/api/v1/ativos/{ativoId:D}/cotacao", null, true, cancellationToken);
+        SendAsync<QuoteResponse>(HttpMethod.Get,
+            $"/api/v1/ativos/{RequiredId(ativoId, nameof(ativoId)):D}/cotacao", null, true, cancellationToken);
 
     public async Task<IReadOnlyList<HistoryPointResponse>> GetHistoryAsync(Guid ativoId, string periodo, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(periodo);
-        return await SendAsync<List<HistoryPointResponse>>(
-            HttpMethod.Get, $"/api/v1/ativos/{ativoId:D}/historico?periodo={Uri.EscapeDataString(periodo)}", null, true, cancellationToken).ConfigureAwait(false);
+        return await SendAsync<List<HistoryPointResponse>>(HttpMethod.Get,
+            $"/api/v1/ativos/{RequiredId(ativoId, nameof(ativoId)):D}/historico?periodo={Uri.EscapeDataString(periodo)}",
+            null, true, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<IndicatorResponse>> GetIndicatorsAsync(Guid ativoId, CancellationToken cancellationToken = default) =>
