@@ -8,8 +8,15 @@ public sealed record TokenResponse
     [JsonPropertyName("access_token"), JsonRequired]
     public string AccessToken { get; init; } = string.Empty;
 
+    [JsonPropertyName("refresh_token"), JsonRequired]
+    public string RefreshToken { get; init; } = string.Empty;
+
     [JsonPropertyName("token_type"), JsonRequired]
     public string TokenType { get; init; } = string.Empty;
+
+    // Validade do access token, em segundos.
+    [JsonPropertyName("expires_in"), JsonRequired]
+    public int ExpiresIn { get; init; }
 }
 
 public sealed record SearchAssetResponse
@@ -348,6 +355,10 @@ public sealed record AiAnalysisResponse
 
     [JsonPropertyName("em_cache"), JsonRequired]
     public bool EmCache { get; init; }
+
+    // Verdadeiro quando o provedor de IA falhou e o backend devolveu a última análise guardada.
+    [JsonPropertyName("desatualizada"), JsonRequired]
+    public bool Desatualizada { get; init; }
 
     [JsonPropertyName("aviso_legal"), JsonRequired]
     public string AvisoLegal { get; init; } = string.Empty;

@@ -67,7 +67,7 @@ Começar com um executável e um projeto de testes é suficiente. Separar respon
 
 | Tela/fluxo | Requisito | Situação na referência da API |
 |---|---|---|
-| Cadastro e login | RF-01, RF-02; UC-01 | Rotas documentadas; sem refresh, logout remoto ou recuperação de senha |
+| Cadastro e login | RF-01, RF-02; UC-01 | Rotas documentadas, com refresh e logout remoto desde 08/10/2026; sem recuperação de senha |
 | Watchlist, busca e preferência de notificação | RF-03; UC-02 | Rotas documentadas; busca não apresenta UUID no exemplo |
 | Detalhe do ativo: cotação e histórico | RF-04, RF-05 | Rotas documentadas usando UUID do ativo |
 | Indicadores, sinais e contexto histórico | RF-06 a RF-08; UC-03 | Rotas documentadas; detalhes do backtest e séries de indicadores a confirmar |
@@ -106,6 +106,8 @@ O portfólio previsto inclui operações de compra/venda com ativo, quantidade, 
 Proposta inicial: manter o token apenas em memória. Ao sair, apagar token, dados das telas, caches por usuário e notificações pendentes locais. Cancelar requisições e impedir que uma resposta da sessão anterior preencha a sessão seguinte.
 
 Cadastro já retorna token; não fazer um login extra. RNF-04 exige expiração máxima de 24 horas e mecanismo de refresh. O HTML documenta validade padrão de 24 horas e ausência de refresh/logout remoto: essa diferença permanece pendente com o backend. Na expiração ou rejeição do token, solicitar login novamente. Não alegar revogação do token no servidor ao executar logout local.
+
+Atualização de 08/10/2026: o backend passou a emitir access token de 30 minutos e refresh token de 30 dias, com `POST /auth/refresh` e `POST /auth/logout`. O desktop mantém os dois tokens apenas em memória, renova o access token sem interromper o uso e revoga o login no servidor ao sair. O login só é pedido de novo quando o refresh é recusado.
 
 Persistência de sessão, se necessária posteriormente, deve usar proteção de credenciais do Windows, sem guardar senhas nem tokens em texto simples. Não registrar tokens, cabeçalhos de autorização, senhas ou conteúdo privado integral nos logs.
 

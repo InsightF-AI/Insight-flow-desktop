@@ -22,8 +22,12 @@ public sealed class InsightFlowApiClient
     // Padrões do backend (chat_max_mensagens / chat_max_caracteres_mensagem); o servidor continua sendo a autoridade.
     public const int ChatMaxMessages = 20;
     public const int ChatMaxCharacters = 2000;
+    // O access token é renovado um pouco antes de expirar, evitando um 401 a cada meia hora de uso.
+    internal static readonly TimeSpan RenewalMargin = TimeSpan.FromSeconds(60);
     private readonly HttpClient _httpClient;
     private readonly UserSession _session;
+    // O backend trata o reuso de um refresh token como roubo e revoga o login: só uma renovação por vez.
+    private readonly SemaphoreSlim _renewalGate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         NumberHandling = JsonNumberHandling.AllowReadingFromString
@@ -50,6 +54,40 @@ public sealed class InsightFlowApiClient
 
     public Task<TokenResponse> RegisterAsync(string nome, string email, string senha, CancellationToken cancellationToken = default) =>
         SendAsync<TokenResponse>(HttpMethod.Post, "/api/v1/usuarios", new { nome, email, senha }, false, cancellationToken);
+
+    // Revoga no servidor o login do refresh token informado. O access token já emitido vale até expirar.
+    public Task LogoutAsync(string refreshToken, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(refreshToken);
+        return SendWithoutResponseAsync(HttpMethod.Post, "/api/v1/auth/logout", new { refresh_token = refreshToken }, false, cancellationToken);
+    }
+
+    // Garante que a sessão tenha um access token diferente de "staleAccessToken", renovando-o se preciso.
+    // Falso significa que o login acabou (refresh recusado ou sessão encerrada); falhas de rede são lançadas.
+    public async Task<bool> RenewSessionAsync(string staleAccessToken, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(staleAccessToken);
+        await _renewalGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var current = _session.Snapshot();
+            if (current.AccessToken is null) return false;
+            // Outra chamada já renovou enquanto esta aguardava.
+            if (current.AccessToken != staleAccessToken) return true;
+            if (current.RefreshToken is null) return false;
+
+            using var request = CreateRequest(HttpMethod.Post, "/api/v1/auth/refresh", new { refresh_token = current.RefreshToken }, null);
+            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.Unauthorized) return false;
+            await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+            var tokens = await ReadAsync<TokenResponse>(response, cancellationToken).ConfigureAwait(false);
+            return _session.Renew(current.Version, tokens.AccessToken, tokens.RefreshToken, DateTimeOffset.UtcNow.AddSeconds(tokens.ExpiresIn));
+        }
+        finally
+        {
+            _renewalGate.Release();
+        }
+    }
 
     public async Task<IReadOnlyList<SearchAssetResponse>> SearchAssetsAsync(string termo, CancellationToken cancellationToken = default)
     {
@@ -222,12 +260,11 @@ public sealed class InsightFlowApiClient
         return SendAsync<ChatResponse>(HttpMethod.Post, "/api/v1/chat", new { mensagens }, true, cancellationToken);
     }
 
-    private HttpRequestMessage CreateRequest(HttpMethod method, string path, object? body, bool authenticated)
+    private static HttpRequestMessage CreateRequest(HttpMethod method, string path, object? body, string? token)
     {
         var request = new HttpRequestMessage(method, path);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        var token = _session.AccessToken;
-        if (authenticated && !string.IsNullOrEmpty(token))
+        if (!string.IsNullOrEmpty(token))
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
@@ -240,12 +277,51 @@ public sealed class InsightFlowApiClient
         return request;
     }
 
+    // Rotas autenticadas renovam o access token perto do vencimento e, diante de um 401, renovam e repetem uma única vez.
+    private async Task<HttpResponseMessage> SendRequestAsync(HttpMethod method, string path, object? body, bool authenticated, CancellationToken cancellationToken)
+    {
+        if (!authenticated) return await SendOnceAsync(method, path, body, null, cancellationToken).ConfigureAwait(false);
+
+        var session = _session.Snapshot();
+        var renewable = session is { AccessToken: not null, RefreshToken: not null };
+        if (renewable && session.ExpiresAt - DateTimeOffset.UtcNow < RenewalMargin)
+        {
+            renewable = await RenewSessionAsync(session.AccessToken!, cancellationToken).ConfigureAwait(false);
+        }
+
+        var token = _session.AccessToken;
+        var response = await SendOnceAsync(method, path, body, token, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.Unauthorized || !renewable || token is null) return response;
+
+        try
+        {
+            if (!await RenewSessionAsync(token, cancellationToken).ConfigureAwait(false)) return response;
+        }
+        catch
+        {
+            response.Dispose();
+            throw;
+        }
+
+        response.Dispose();
+        return await SendOnceAsync(method, path, body, _session.AccessToken, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<HttpResponseMessage> SendOnceAsync(HttpMethod method, string path, object? body, string? token, CancellationToken cancellationToken)
+    {
+        using var request = CreateRequest(method, path, body, token);
+        return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, bool authenticated, CancellationToken cancellationToken)
     {
-        using var request = CreateRequest(method, path, body, authenticated);
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        using var response = await SendRequestAsync(method, path, body, authenticated, cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+        return await ReadAsync<T>(response, cancellationToken).ConfigureAwait(false);
+    }
 
+    private static async Task<T> ReadAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
         try
         {
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -268,7 +344,7 @@ public sealed class InsightFlowApiClient
     {
         var valid = result switch
         {
-            TokenResponse token => !string.IsNullOrWhiteSpace(token.AccessToken) &&
+            TokenResponse token => ValidToken(token.AccessToken) && ValidToken(token.RefreshToken) && token.ExpiresIn > 0 &&
                                    string.Equals(token.TokenType, "bearer", StringComparison.OrdinalIgnoreCase),
             WatchlistItemResponse item => ValidWatchlistItem(item),
             List<WatchlistItemResponse> items => items.All(ValidWatchlistItem),
@@ -296,6 +372,8 @@ public sealed class InsightFlowApiClient
             throw new ApiException(statusCode, "A API retornou dados em um formato incompatível.");
         }
     }
+
+    private static bool ValidToken(string token) => !string.IsNullOrWhiteSpace(token) && !token.Any(char.IsWhiteSpace);
 
     private static bool ValidSearchAsset(SearchAssetResponse asset) =>
         !string.IsNullOrWhiteSpace(asset.Ticker) &&
@@ -354,8 +432,7 @@ public sealed class InsightFlowApiClient
 
     private async Task SendWithoutResponseAsync(HttpMethod method, string path, object? body, bool authenticated, CancellationToken cancellationToken)
     {
-        using var request = CreateRequest(method, path, body, authenticated);
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        using var response = await SendRequestAsync(method, path, body, authenticated, cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
