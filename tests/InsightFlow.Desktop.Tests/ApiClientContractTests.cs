@@ -14,7 +14,7 @@ public sealed class ApiClientContractTests
     public async Task Login_sends_documented_credentials_without_reusing_a_previous_bearer_token()
     {
         var handler = RecordingHttpMessageHandler.ReturningJson(
-            """{"access_token":"new-test-token","token_type":"bearer"}""");
+            """{"access_token":"new-test-token","refresh_token":"new-refresh-token","token_type":"bearer","expires_in":1800}""");
         using var http = CreateHttpClient(handler);
         var session = new UserSession();
         session.Start("previous-test-token");
@@ -32,13 +32,15 @@ public sealed class ApiClientContractTests
         Assert.Equal("test-password", body.RootElement.GetProperty("senha").GetString());
         Assert.Equal(2, body.RootElement.EnumerateObject().Count());
         Assert.Equal("new-test-token", result.AccessToken);
+        Assert.Equal("new-refresh-token", result.RefreshToken);
+        Assert.Equal(1800, result.ExpiresIn);
     }
 
     [Fact]
     public async Task Registration_sends_name_and_returns_the_token_without_an_extra_login_request()
     {
         var handler = RecordingHttpMessageHandler.ReturningJson(
-            """{"access_token":"registration-test-token","token_type":"bearer"}""",
+            """{"access_token":"registration-test-token","refresh_token":"registration-refresh-token","token_type":"bearer","expires_in":1800}""",
             HttpStatusCode.Created);
         using var http = CreateHttpClient(handler);
         var session = new UserSession();
@@ -57,6 +59,7 @@ public sealed class ApiClientContractTests
         Assert.Equal("test-password", body.RootElement.GetProperty("senha").GetString());
         Assert.Equal(3, body.RootElement.EnumerateObject().Count());
         Assert.Equal("registration-test-token", result.AccessToken);
+        Assert.Equal("registration-refresh-token", result.RefreshToken);
     }
 
     [Fact]
@@ -332,11 +335,15 @@ public sealed class ApiClientContractTests
         Assert.Contains("formato incompatível", error.Message);
     }
 
-    [Fact]
-    public async Task Login_with_empty_token_is_rejected()
+    [Theory]
+    [InlineData("""{"access_token":"","refresh_token":"refresh","token_type":"bearer","expires_in":1800}""")]
+    [InlineData("""{"access_token":"access","refresh_token":"","token_type":"bearer","expires_in":1800}""")]
+    [InlineData("""{"access_token":"access","refresh_token":"refresh","token_type":"bearer","expires_in":0}""")]
+    // Formato anterior ao refresh token: sem ele a sessão cairia a cada vencimento do access token.
+    [InlineData("""{"access_token":"access","token_type":"bearer"}""")]
+    public async Task Login_with_an_empty_or_incomplete_token_pair_is_rejected(string body)
     {
-        var handler = RecordingHttpMessageHandler.ReturningJson(
-            """{"access_token":"","token_type":"bearer"}""");
+        var handler = RecordingHttpMessageHandler.ReturningJson(body);
         using var http = CreateHttpClient(handler);
         var api = new InsightFlowApiClient(http, new UserSession());
 

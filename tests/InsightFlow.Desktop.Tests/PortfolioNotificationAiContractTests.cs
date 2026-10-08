@@ -170,7 +170,7 @@ public sealed class PortfolioNotificationAiContractTests
     public async Task Ai_analysis_uses_the_asset_uuid_and_requires_the_legal_notice()
     {
         var handler = RecordingHttpMessageHandler.ReturningJson($$"""
-            {"ativo_id":"{{AssetId}}","texto":"Análise","gerado_em":"2026-09-29T12:00:00Z","modelo":"gemini-2.5-flash","em_cache":true,"aviso_legal":""}
+            {"ativo_id":"{{AssetId}}","texto":"Análise","gerado_em":"2026-09-29T12:00:00Z","modelo":"gemini-3.5-flash","em_cache":true,"desatualizada":false,"aviso_legal":""}
             """);
         using var http = CreateHttpClient(handler);
         var api = new InsightFlowApiClient(http, new UserSession());
@@ -179,6 +179,21 @@ public sealed class PortfolioNotificationAiContractTests
 
         Assert.Equal($"/api/v1/ativos/{AssetId}/analise", Assert.Single(handler.Requests).Uri.AbsolutePath);
         Assert.Contains("formato incompatível", error.Message);
+    }
+
+    [Fact]
+    public async Task Ai_analysis_tells_a_stale_fallback_from_a_fresh_answer()
+    {
+        var handler = RecordingHttpMessageHandler.ReturningJson($$"""
+            {"ativo_id":"{{AssetId}}","texto":"Análise","gerado_em":"2026-10-01T12:00:00Z","modelo":"gemini-3.5-flash","em_cache":true,"desatualizada":true,"aviso_legal":"Aviso"}
+            """);
+        using var http = CreateHttpClient(handler);
+        var api = new InsightFlowApiClient(http, new UserSession());
+
+        var analysis = await api.GetAiAnalysisAsync(AssetId);
+
+        Assert.True(analysis.Desatualizada);
+        Assert.True(analysis.EmCache);
     }
 
     [Fact]
