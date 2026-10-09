@@ -183,3 +183,18 @@ Evidência: compilação sem avisos e 90 testes aprovados (eram 75), incluindo r
 Conferido depois, no mesmo dia, contra o backend `develop` (`3ed5a8c`) executado com `docker compose up`, por chamadas HTTP diretas: cadastro e login devolvem `access_token`, `refresh_token`, `token_type` e `expires_in` (1800); o refresh devolve um par novo aceito nas rotas autenticadas; depois do logout, o refresh token revogado é recusado com 401 "Refresh token invalido".
 
 Não validado: o WebSocket e o aviso na bandeja com notificação real, e uma sessão de mais de 30 minutos em uso contínuo.
+
+## Acompanhamento do cliente web em 09/10/2026
+
+O web integrou carteira, chat IA, alertas em tempo real e web push à API real (commit `42f9176`). O contrato da API não mudou desde a sincronização de 08/10/2026; o desktop passou a aproveitar as mesmas rotas como o web. A comparação completa, com o que foi mantido diferente, está em [Integração com a API](INTEGRACAO_API.md#atualização-de-09102026-cliente-web-em-42f9176). Web e backend não foram alterados.
+
+- **IA (marco 6):** análise e chat esperam 70 s e 90 s. O prazo de 30 s, antes aplicado a todas as chamadas, interrompia respostas mais lentas do provedor. As telas avisam que a resposta pode levar até 1 minuto.
+- **Visão geral (marco 2):** a watchlist mostra preço, variação do dia e quantidade de sinais vigentes de cada ativo.
+- **Alertas (marco 4):** preço atual, distância até o alvo e contagem de alertas com a condição satisfeita no preço atual.
+- **Portfólio (marco 6):** variação do dia e resultado por posição, variação do dia da carteira, CDI e Ibovespa carregados com a tela, aba com o resumo diário e sugestão da cotação atual no registro de operação.
+- **Notificações (marco 5):** ação para marcar todas como lidas.
+- **Layout:** Alertas e Notificações deixaram de cortar o painel da direita em janelas mais estreitas que o tamanho inicial; os tamanhos mínimos de Alertas e Portfólio subiram para caber as colunas novas.
+
+Evidência: compilação sem avisos, 93 testes aprovados (eram 90) e capturas de todas as telas em 125%, no tamanho padrão e no mínimo, com dados do backend local em Docker (`a8bcb02`). Com esse backend foram conferidos uma análise por IA (18,7 s, `gemini-3.5-flash`) e um resumo diário gerado pelo job do servidor.
+
+Não validado: o chat com o provedor real, o aviso na bandeja com notificação real, escalas de 150% e 200%, e o comportamento com muitas dezenas de ativos na watchlist (duas chamadas por ativo a cada atualização da lista).

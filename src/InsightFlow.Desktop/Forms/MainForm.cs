@@ -18,6 +18,8 @@ internal sealed partial class MainForm : AsyncForm
     private readonly NotificationStream? _notificationStream;
     private readonly int _sessionVersion;
     private readonly List<WatchlistItemResponse> _watchlist = [];
+    // Cotação e sinais vigentes por ativo da watchlist; sobrevivem às remontagens da grade.
+    private readonly Dictionary<Guid, WatchMarket> _market = [];
     private CancellationTokenSource? _searchCancellation;
     private CancellationTokenSource? _detailCancellation;
     private CancellationTokenSource? _backtestCancellation;
@@ -98,6 +100,7 @@ internal sealed partial class MainForm : AsyncForm
             StopNotifications();
             RevokeSession();
             _watchlist.Clear();
+            _market.Clear();
             _searchResults.Items.Clear();
             _watchGrid.Rows.Clear();
             _history.Rows.Clear();
@@ -188,6 +191,7 @@ internal sealed partial class MainForm : AsyncForm
                 _watchlist.Clear();
                 _watchlist.AddRange(items);
                 BindWatchlist(selected);
+                LoadWatchMarket(items);
                 SetStatus(_watchStatus, items.Count == 0 ? "Sua watchlist está vazia. Adicione um ativo acima." : $"{items.Count} ativo(s) acompanhado(s).");
             }
             finally { if (IsCurrentSession) SetWatchBusy(false); }
@@ -227,6 +231,7 @@ internal sealed partial class MainForm : AsyncForm
                 await _api.RemoveFromWatchlistAsync(item.Ativo.Id, cancellationToken);
                 if (!IsCurrentSession) return;
                 _watchlist.RemoveAll(existing => existing.Ativo.Id == item.Ativo.Id);
+                _market.Remove(item.Ativo.Id);
                 BindWatchlist(null);
                 SetStatus(_watchStatus, _watchlist.Count == 0 ? "Sua watchlist está vazia." : $"{item.Ativo.Ticker} removido.");
             }
@@ -269,8 +274,10 @@ internal sealed partial class MainForm : AsyncForm
             _watchGrid.Rows.Clear();
             foreach (var item in _watchlist)
             {
-                var index = _watchGrid.Rows.Add(item.Ativo.Ticker, item.Ativo.Nome);
-                _watchGrid.Rows[index].Tag = item;
+                var row = _watchGrid.Rows[_watchGrid.Rows.Add(item.Ativo.Ticker, item.Ativo.Nome)];
+                row.Tag = item;
+                row.SetFormat(GridCells.Money(item.Ativo.Moeda), "Preço");
+                ShowWatchMarket(row);
             }
             if (_watchGrid.Rows.Count > 0)
             {
@@ -282,6 +289,66 @@ internal sealed partial class MainForm : AsyncForm
         _notify.Checked = SelectedItem?.Notificar ?? false;
         UpdateActions();
         LoadDetails();
+    }
+
+    // Preço, variação do dia e sinais vigentes de cada ativo, como na watchlist do cliente web.
+    private void LoadWatchMarket(IReadOnlyList<WatchlistItemResponse> items)
+    {
+        if (items.Count == 0 || !IsCurrentSession) return;
+        Run(cancellationToken => Task.WhenAll(items.Select(item => LoadWatchMarketAsync(item.Ativo.Id, cancellationToken))),
+            exception => HandleError(exception, _watchStatus));
+    }
+
+    private async Task LoadWatchMarketAsync(Guid assetId, CancellationToken cancellationToken)
+    {
+        // Cotação e sinais falham em separado: a fonte de mercado indisponível não esconde os sinais já guardados.
+        var quoteTask = OrNullAsync(_api.GetQuoteAsync(assetId, cancellationToken), cancellationToken);
+        var signalsTask = OrNullAsync(_api.GetSignalsAsync(assetId, cancellationToken), cancellationToken);
+        var quote = await quoteTask;
+        var signals = await signalsTask;
+        if (!IsCurrentSession) return;
+        // Uma consulta que falha deixa a célula vazia em vez de manter o valor anterior como se fosse atual.
+        RememberMarket(assetId, _ => new WatchMarket(quote, signals?.Count(signal => signal.DataDesativacao is null)));
+    }
+
+    // Só a sessão recusada e o fechamento da tela interrompem a carga; as demais falhas ficam restritas ao ativo.
+    private static async Task<T?> OrNullAsync<T>(Task<T> request, CancellationToken cancellationToken) where T : class
+    {
+        try
+        {
+            return await request;
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested &&
+                                          exception is not ApiException { StatusCode: HttpStatusCode.Unauthorized })
+        {
+            return null;
+        }
+    }
+
+    private void RememberMarket(Guid assetId, Func<WatchMarket, WatchMarket> update)
+    {
+        if (_watchlist.All(item => item.Ativo.Id != assetId)) return;
+        _market[assetId] = update(_market.GetValueOrDefault(assetId) ?? new WatchMarket());
+        var row = _watchGrid.Rows.Cast<DataGridViewRow>().FirstOrDefault(candidate => ((WatchlistItemResponse)candidate.Tag!).Ativo.Id == assetId);
+        if (row is not null) ShowWatchMarket(row);
+    }
+
+    private void ShowWatchMarket(DataGridViewRow row)
+    {
+        var market = _market.GetValueOrDefault(((WatchlistItemResponse)row.Tag!).Ativo.Id);
+        row.Cells["Preço"].Value = market?.Quote?.Preco;
+        var change = row.Cells["Var. dia"];
+        change.Value = market?.Quote?.VariacaoPercentual;
+        change.Style.ForeColor = change.Style.SelectionForeColor = market?.Quote?.VariacaoPercentual switch
+        {
+            > 0 => UiTheme.Up,
+            < 0 => UiTheme.Down,
+            _ => Color.Empty
+        };
+        var signals = row.Cells["Sinais"];
+        signals.Value = market?.ActiveSignals;
+        // Âmbar marca contexto de sinal, sem sugerir compra ou venda.
+        signals.Style.ForeColor = signals.Style.SelectionForeColor = market?.ActiveSignals > 0 ? UiTheme.Amber : Color.Empty;
     }
 
     private void LoadDetails()
@@ -333,6 +400,7 @@ internal sealed partial class MainForm : AsyncForm
             _quoteChange.ForeColor = quote.Variacao < 0 ? UiTheme.Down : quote.Variacao > 0 ? UiTheme.Up : UiTheme.Ink;
             _quoteRange.Text = $"Mín. {currency} {Number(quote.MinimaDia)}  /  Máx. {currency} {Number(quote.MaximaDia)}";
             _quoteVolume.Text = $"Volume: {Number(quote.Volume)}";
+            RememberMarket(item.Ativo.Id, market => market with { Quote = quote });
             SetStatus(_quoteStatus, $"Consulta realizada às {DateTimeOffset.Now:HH:mm:ss}. Horário de mercado não informado.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
@@ -414,6 +482,7 @@ internal sealed partial class MainForm : AsyncForm
             {
                 _bindingSignals = false;
             }
+            RememberMarket(item.Ativo.Id, market => market with { ActiveSignals = signals.Count(signal => signal.DataDesativacao is null) });
             SetStatus(_signalStatus, signals.Count == 0 ? "Nenhum sinal recente para este ativo." : $"{signals.Count} sinal(is) encontrado(s).");
             LoadSelectedBacktest();
         }
@@ -499,7 +568,7 @@ internal sealed partial class MainForm : AsyncForm
         UiTheme.SetButtonEnabled(_analysisButton, false, true);
         _analysisText.Clear();
         _analysisNotice.Text = "";
-        SetStatus(_analysisStatus, $"Gerando análise de {item.Ativo.Ticker}…");
+        SetStatus(_analysisStatus, $"Gerando análise de {item.Ativo.Ticker}… Pode levar até 1 minuto.");
         Run(async lifetime =>
         {
             using var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
@@ -665,6 +734,7 @@ internal sealed partial class MainForm : AsyncForm
         _backtestCancellation?.Cancel();
         _analysisCancellation?.Cancel();
         _watchlist.Clear();
+        _market.Clear();
         _searchResults.Items.Clear();
         _watchGrid.Rows.Clear();
         _history.Rows.Clear();
@@ -776,6 +846,8 @@ internal sealed partial class MainForm : AsyncForm
         }
         base.Dispose(disposing);
     }
+
+    private sealed record WatchMarket(QuoteResponse? Quote = null, int? ActiveSignals = null);
 
     private sealed record SearchResult(SearchAssetResponse Asset)
     {

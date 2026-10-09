@@ -273,12 +273,16 @@ internal sealed partial class MainForm
         watchHeading.Controls.Add(UiTheme.Label("Watchlist", 13, true), 0, 0);
         watchHeading.Controls.Add(_refreshWatch, 1, 0);
         panel.Controls.Add(watchHeading, 0, 4);
-        var hint = UiTheme.Label("Ativos acompanhados pela sua conta", 8.5f);
+        var hint = UiTheme.Label("Preço, variação do dia e sinais vigentes de cada ativo", 8.5f);
         hint.ForeColor = UiTheme.InkMuted;
         panel.Controls.Add(hint, 0, 5);
         _watchGrid.AccessibleName = "Ativos na sua watchlist";
-        _watchGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Ticker", HeaderText = "ATIVO", FillWeight = 32 });
-        _watchGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Nome", HeaderText = "NOME", FillWeight = 68 });
+        _watchGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Ticker", HeaderText = "ATIVO", FillWeight = 56 });
+        _watchGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Nome", HeaderText = "NOME", FillWeight = 70 });
+        // A moeda varia por ativo: o formato do preço é definido em cada linha.
+        _watchGrid.Columns.Add(GridCells.Column("Preço", 112f, typeof(decimal), alignRight: true));
+        _watchGrid.Columns.Add(GridCells.Column("Var. dia", 74f, typeof(decimal), GridCells.SignedPercent, true));
+        _watchGrid.Columns.Add(GridCells.Column("Sinais", 64f, typeof(int), alignRight: true));
         panel.Controls.Add(_watchGrid, 0, 6);
         _watchStatus.Dock = DockStyle.Fill;
         panel.Controls.Add(_watchStatus, 0, 7);

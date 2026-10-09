@@ -24,8 +24,12 @@ public sealed class InsightFlowApiClient
     public const int ChatMaxCharacters = 2000;
     // O access token é renovado um pouco antes de expirar, evitando um 401 a cada meia hora de uso.
     internal static readonly TimeSpan RenewalMargin = TimeSpan.FromSeconds(60);
+    // O provedor de IA do backend leva de segundos a perto de um minuto; os prazos são os mesmos do cliente web.
+    internal static readonly TimeSpan AnalysisTimeout = TimeSpan.FromSeconds(70);
+    internal static readonly TimeSpan ChatTimeout = TimeSpan.FromSeconds(90);
     private readonly HttpClient _httpClient;
     private readonly UserSession _session;
+    private readonly TimeSpan? _requestTimeout;
     // O backend trata o reuso de um refresh token como roubo e revoga o login: só uma renovação por vez.
     private readonly SemaphoreSlim _renewalGate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -33,7 +37,9 @@ public sealed class InsightFlowApiClient
         NumberHandling = JsonNumberHandling.AllowReadingFromString
     };
 
-    public InsightFlowApiClient(HttpClient httpClient, UserSession session)
+    // Com "requestTimeout", o prazo é contado por chamada e as de IA ganham um prazo maior; o Timeout do
+    // HttpClient vale para todas e deve então ser infinito. Sem ele, só o Timeout do HttpClient se aplica.
+    public InsightFlowApiClient(HttpClient httpClient, UserSession session, TimeSpan? requestTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentNullException.ThrowIfNull(session);
@@ -41,9 +47,14 @@ public sealed class InsightFlowApiClient
         {
             throw new ArgumentException("Defina a URL base do servidor no HttpClient.", nameof(httpClient));
         }
+        if (requestTimeout is { } timeout && timeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(requestTimeout), "O prazo das chamadas deve ser maior que zero.");
+        }
 
         _httpClient = httpClient;
         _session = session;
+        _requestTimeout = requestTimeout;
     }
 
     public Task CheckHealthAsync(CancellationToken cancellationToken = default) =>
@@ -67,6 +78,8 @@ public sealed class InsightFlowApiClient
     public async Task<bool> RenewSessionAsync(string staleAccessToken, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(staleAccessToken);
+        using var deadline = Deadline(cancellationToken);
+        if (deadline is not null) cancellationToken = deadline.Token;
         await _renewalGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -242,7 +255,7 @@ public sealed class InsightFlowApiClient
 
     public Task<AiAnalysisResponse> GetAiAnalysisAsync(Guid ativoId, CancellationToken cancellationToken = default) =>
         SendAsync<AiAnalysisResponse>(HttpMethod.Get,
-            $"/api/v1/ativos/{RequiredId(ativoId, nameof(ativoId)):D}/analise", null, true, cancellationToken);
+            $"/api/v1/ativos/{RequiredId(ativoId, nameof(ativoId)):D}/analise", null, true, cancellationToken, AnalysisTimeout);
 
     public Task<ChatResponse> ChatAsync(IReadOnlyList<ChatMessage> mensagens, CancellationToken cancellationToken = default)
     {
@@ -257,7 +270,16 @@ public sealed class InsightFlowApiClient
             if (mensagem.Texto.Length > ChatMaxCharacters) throw new ArgumentException($"Cada mensagem deve ter até {ChatMaxCharacters} caracteres.", nameof(mensagens));
         }
 
-        return SendAsync<ChatResponse>(HttpMethod.Post, "/api/v1/chat", new { mensagens }, true, cancellationToken);
+        return SendAsync<ChatResponse>(HttpMethod.Post, "/api/v1/chat", new { mensagens }, true, cancellationToken, ChatTimeout);
+    }
+
+    // Prazo da chamada inteira, da requisição à leitura da resposta. "minimum" alonga o das chamadas de IA.
+    private CancellationTokenSource? Deadline(CancellationToken cancellationToken, TimeSpan minimum = default)
+    {
+        if (_requestTimeout is not { } timeout) return null;
+        var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        source.CancelAfter(timeout > minimum ? timeout : minimum);
+        return source;
     }
 
     private static HttpRequestMessage CreateRequest(HttpMethod method, string path, object? body, string? token)
@@ -313,8 +335,10 @@ public sealed class InsightFlowApiClient
         return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, bool authenticated, CancellationToken cancellationToken)
+    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, bool authenticated, CancellationToken cancellationToken, TimeSpan minimumTimeout = default)
     {
+        using var deadline = Deadline(cancellationToken, minimumTimeout);
+        if (deadline is not null) cancellationToken = deadline.Token;
         using var response = await SendRequestAsync(method, path, body, authenticated, cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
         return await ReadAsync<T>(response, cancellationToken).ConfigureAwait(false);
@@ -432,6 +456,8 @@ public sealed class InsightFlowApiClient
 
     private async Task SendWithoutResponseAsync(HttpMethod method, string path, object? body, bool authenticated, CancellationToken cancellationToken)
     {
+        using var deadline = Deadline(cancellationToken);
+        if (deadline is not null) cancellationToken = deadline.Token;
         using var response = await SendRequestAsync(method, path, body, authenticated, cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
     }
