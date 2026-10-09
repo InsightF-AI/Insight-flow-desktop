@@ -198,3 +198,14 @@ O web integrou carteira, chat IA, alertas em tempo real e web push à API real (
 Evidência: compilação sem avisos, 93 testes aprovados (eram 90) e capturas de todas as telas em 125%, no tamanho padrão e no mínimo, com dados do backend local em Docker (`a8bcb02`). Com esse backend foram conferidos uma análise por IA (18,7 s, `gemini-3.5-flash`) e um resumo diário gerado pelo job do servidor.
 
 Não validado: o chat com o provedor real, o aviso na bandeja com notificação real, escalas de 150% e 200%, e o comportamento com muitas dezenas de ativos na watchlist (duas chamadas por ativo a cada atualização da lista).
+
+### Revisão e limpeza no mesmo dia
+
+Depois da entrega acima, o código do desktop foi revisto por inteiro com os analisadores do .NET ligados; nenhum membro sem uso foi apontado. O que mudou:
+
+- **Nova operação:** ao trocar de ativo, a cotação dele entra como preço unitário, e a tela mostra o valor total (quantidade × preço) enquanto se digita.
+- **Aviso legal:** análise, chat e resumo diário mostram "Análise gerada por IA. Não constitui recomendação de investimento." mesmo quando a API não envia o texto; o chat já abre com o aviso.
+- **Código:** quatro auxiliares iguais, um em cada tela, viraram um só (`OptionalRequest.OrNullAsync`); saíram os aliases de cor sem uso do tema; comentários em inglês foram traduzidos.
+- **README:** reorganizado em torno do estado atual; a base documental e o histórico das sincronizações ficam em `docs/`.
+
+Evidência: compilação sem avisos e 94 testes aprovados (eram 93). A linguagem da interface foi conferida por busca nos textos: não há chamadas para comprar ou vender.

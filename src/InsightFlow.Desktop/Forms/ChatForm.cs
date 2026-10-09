@@ -17,7 +17,7 @@ internal sealed class ChatForm : AsyncForm
     private readonly TextBox _input = new() { Multiline = true, Dock = DockStyle.Fill, MaxLength = InsightFlowApiClient.ChatMaxCharacters, ScrollBars = ScrollBars.Vertical, Height = 76 };
     private readonly Button _sendButton = UiTheme.Button("&Enviar", true);
     private readonly Button _newButton = UiTheme.Button("&Nova conversa");
-    private readonly Label _notice = UiTheme.Label("As respostas são geradas por IA a partir dos dados da sua carteira e dos ativos cadastrados.", 8.5f);
+    private readonly Label _notice = UiTheme.Label(AiNotice.Text, 8.5f);
     private readonly Label _status = UiTheme.Label("Pergunte sobre sua carteira ou sobre ativos acompanhados.", 9);
     private readonly Font _speakerFont = UiTheme.Font(9, true);
     private readonly Font _messageFont = UiTheme.Font(10);
@@ -73,7 +73,7 @@ internal sealed class ChatForm : AsyncForm
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         var titles = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
         titles.Controls.Add(UiTheme.Label("Chat IA", 20, true));
-        var subtitle = UiTheme.Label("Conteúdo informativo; não é recomendação de investimento.", 9);
+        var subtitle = UiTheme.Label("Respostas geradas por IA a partir dos dados da sua carteira e dos ativos acompanhados.", 9);
         subtitle.ForeColor = UiTheme.InkMuted;
         titles.Controls.Add(subtitle);
         header.Controls.Add(titles, 0, 0);
@@ -123,7 +123,7 @@ internal sealed class ChatForm : AsyncForm
                 _history.Add(question);
                 _history.Add(new ChatMessage(InsightFlowApiClient.ChatAssistant, answer.Texto));
                 AppendMessage("InsightFlow IA", answer.Texto, UiTheme.Violet);
-                _notice.Text = answer.AvisoLegal;
+                _notice.Text = AiNotice.OrDefault(answer.AvisoLegal);
                 SetStatus($"Resposta gerada por {answer.Modelo}.");
             }
             finally

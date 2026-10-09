@@ -35,6 +35,7 @@ internal sealed class PortfolioForm : AsyncForm
     private readonly Button _refreshButton = UiTheme.Button("&Atualizar");
     private readonly Label _comparison = UiTheme.Label("Carregando comparação com CDI e Ibovespa…", 10);
     private readonly Label _assetHint = UiTheme.Label("", 8.5f);
+    private readonly Label _total = UiTheme.Label("", 10, true);
     private readonly TextBox _summaryText = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, BorderStyle = BorderStyle.None };
     private readonly Label _summaryNotice = UiTheme.Label("", 8.5f);
     private readonly Label _summaryStatus = UiTheme.Label("Carregando resumo diário…", 9);
@@ -66,6 +67,9 @@ internal sealed class PortfolioForm : AsyncForm
         _registerButton.Click += (_, _) => Register();
         _deleteButton.Click += (_, _) => DeleteSelected();
         _operations.SelectionChanged += (_, _) => UpdateActions();
+        // O total acompanha a digitação, antes de o campo confirmar o valor.
+        _quantity.TextChanged += (_, _) => ShowTotal();
+        _unitPrice.TextChanged += (_, _) => ShowTotal();
         _asset.SelectedIndexChanged += (_, _) =>
         {
             UpdateActions();
@@ -219,16 +223,18 @@ internal sealed class PortfolioForm : AsyncForm
         _quantity.Margin = new Padding(3, 3, 8, 3);
         editor.Controls.Add(_quantity, 0, 7);
         editor.Controls.Add(_unitPrice, 1, 7);
+        _total.Margin = new Padding(3, 10, 0, 0);
+        AddWide(_total, 8);
         var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, Margin = new Padding(0, 16, 0, 8) };
         actions.Controls.Add(_registerButton);
         actions.Controls.Add(_deleteButton);
-        AddWide(actions, 8);
+        AddWide(actions, 9);
         var note = UiTheme.Label(_assets.Count == 0
             ? "Adicione ativos à watchlist para registrar operações: a API exige o identificador interno do ativo."
             : "Somente ativos da sua watchlist aparecem na lista. O preço é informado na moeda do ativo. Vendas acima da quantidade em carteira são recusadas pela API.", 8.5f);
         note.ForeColor = UiTheme.InkMuted;
         note.MaximumSize = new Size(290, 0);
-        AddWide(note, 9);
+        AddWide(note, 10);
 
         var split = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, Size = new Size(1120, 500), SplitterDistance = 770, Panel1MinSize = 420, Panel2MinSize = 320, BackColor = UiTheme.Border };
         split.Panel1.BackColor = UiTheme.Surface;
@@ -378,7 +384,7 @@ internal sealed class PortfolioForm : AsyncForm
         if (positions.Count == 0) return;
         Run(async cancellationToken =>
         {
-            var quotes = await Task.WhenAll(positions.Select(position => QuoteOrNullAsync(position.AtivoId, cancellationToken)));
+            var quotes = await Task.WhenAll(positions.Select(position => _api.GetQuoteAsync(position.AtivoId, cancellationToken).OrNullAsync(cancellationToken)));
             if (!IsCurrentSession || version != _positionsVersion) return;
             decimal weighted = 0, weight = 0;
             for (var i = 0; i < positions.Count; i++)
@@ -405,20 +411,6 @@ internal sealed class PortfolioForm : AsyncForm
         }, exception => HandleError(exception, _positionStatus));
     }
 
-    // Só a sessão recusada e o fechamento da tela interrompem a consulta; sem cotação, o dado fica em branco.
-    private async Task<QuoteResponse?> QuoteOrNullAsync(Guid assetId, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await _api.GetQuoteAsync(assetId, cancellationToken);
-        }
-        catch (Exception exception) when (!cancellationToken.IsCancellationRequested &&
-                                          exception is not ApiException { StatusCode: HttpStatusCode.Unauthorized })
-        {
-            return null;
-        }
-    }
-
     private void ForgetHoldings()
     {
         _held = null;
@@ -436,7 +428,7 @@ internal sealed class PortfolioForm : AsyncForm
             _assetQuoteCancellation = request;
             try
             {
-                var quote = await QuoteOrNullAsync(choice.Asset.Id, request.Token);
+                var quote = await _api.GetQuoteAsync(choice.Asset.Id, request.Token).OrNullAsync(request.Token);
                 if (quote is null || !IsCurrentSession || request.IsCancellationRequested) return;
                 _quotes[choice.Asset.Id] = quote;
                 ShowAssetHint();
@@ -454,6 +446,15 @@ internal sealed class PortfolioForm : AsyncForm
             }
         }, exception => HandleError(exception, _status));
     }
+
+    private void ShowTotal()
+    {
+        var total = Typed(_quantity) * Typed(_unitPrice);
+        _total.Text = total > 0 && _asset.SelectedItem is AssetChoice choice ? $"Valor total: {Money(choice.Asset.Moeda, total)}" : "";
+    }
+
+    private static decimal Typed(NumericUpDown input) =>
+        decimal.TryParse(input.Text, NumberStyles.Number, CultureInfo.CurrentCulture, out var value) && value > 0 ? value : 0;
 
     private void ShowAssetHint()
     {
@@ -502,8 +503,7 @@ internal sealed class PortfolioForm : AsyncForm
             return;
         }
         _summaryText.Text = (NotificationsForm.ContextText(latest.Contexto, "texto") ?? latest.Mensagem).ReplaceLineEndings("\r\n");
-        _summaryNotice.Text = NotificationsForm.ContextText(latest.Contexto, "aviso_legal")
-                              ?? "Conteúdo informativo gerado por IA; não é recomendação de investimento.";
+        _summaryNotice.Text = AiNotice.OrDefault(NotificationsForm.ContextText(latest.Contexto, "aviso_legal"));
         SetStatus(_summaryStatus, $"Gerado pelo servidor em {latest.CriadoEm.LocalDateTime:dd/MM/yyyy HH:mm}. Também aparece em Notificações.");
     }
 
@@ -715,15 +715,21 @@ internal sealed class PortfolioForm : AsyncForm
         return page;
     }
 
-    private static TableLayoutPanel Card(int rows) => new()
+    private static TableLayoutPanel Card(int rows)
     {
-        Dock = DockStyle.Fill,
-        ColumnCount = 1,
-        RowCount = rows,
-        BackColor = UiTheme.Surface,
-        Padding = new Padding(8),
-        Margin = Padding.Empty
-    };
+        var card = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = rows,
+            BackColor = UiTheme.Surface,
+            Padding = new Padding(8),
+            Margin = Padding.Empty
+        };
+        // Sem estilo, a coluna cresce com a tabela e a última coluna some atrás do painel ao lado.
+        card.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        return card;
+    }
 
     private static Label FieldLabel(string text)
     {

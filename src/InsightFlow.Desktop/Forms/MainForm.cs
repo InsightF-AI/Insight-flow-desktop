@@ -302,27 +302,13 @@ internal sealed partial class MainForm : AsyncForm
     private async Task LoadWatchMarketAsync(Guid assetId, CancellationToken cancellationToken)
     {
         // Cotação e sinais falham em separado: a fonte de mercado indisponível não esconde os sinais já guardados.
-        var quoteTask = OrNullAsync(_api.GetQuoteAsync(assetId, cancellationToken), cancellationToken);
-        var signalsTask = OrNullAsync(_api.GetSignalsAsync(assetId, cancellationToken), cancellationToken);
+        var quoteTask = _api.GetQuoteAsync(assetId, cancellationToken).OrNullAsync(cancellationToken);
+        var signalsTask = _api.GetSignalsAsync(assetId, cancellationToken).OrNullAsync(cancellationToken);
         var quote = await quoteTask;
         var signals = await signalsTask;
         if (!IsCurrentSession) return;
         // Uma consulta que falha deixa a célula vazia em vez de manter o valor anterior como se fosse atual.
         RememberMarket(assetId, _ => new WatchMarket(quote, signals?.Count(signal => signal.DataDesativacao is null)));
-    }
-
-    // Só a sessão recusada e o fechamento da tela interrompem a carga; as demais falhas ficam restritas ao ativo.
-    private static async Task<T?> OrNullAsync<T>(Task<T> request, CancellationToken cancellationToken) where T : class
-    {
-        try
-        {
-            return await request;
-        }
-        catch (Exception exception) when (!cancellationToken.IsCancellationRequested &&
-                                          exception is not ApiException { StatusCode: HttpStatusCode.Unauthorized })
-        {
-            return null;
-        }
     }
 
     private void RememberMarket(Guid assetId, Func<WatchMarket, WatchMarket> update)
@@ -538,7 +524,7 @@ internal sealed partial class MainForm : AsyncForm
         _assetDescription.Text = item is null ? "Adicione ou selecione um ativo na sua watchlist." : $"{item.Ativo.Nome} · {item.Ativo.Tipo} · {item.Ativo.Moeda}";
         _quotePrice.Text = "—";
         _quoteChange.Text = "Variação: —";
-        _quoteChange.ForeColor = UiTheme.Navy;
+        _quoteChange.ForeColor = UiTheme.Ink;
         _quoteRange.Text = "Mínima / máxima do dia: —";
         _quoteVolume.Text = "Volume: —";
         SetStatus(_quoteStatus, "");
@@ -578,7 +564,7 @@ internal sealed partial class MainForm : AsyncForm
                 var analysis = await _api.GetAiAnalysisAsync(item.Ativo.Id, request.Token);
                 if (!IsCurrentDetail(detailVersion, request.Token)) return;
                 _analysisText.Text = analysis.Texto.ReplaceLineEndings("\r\n");
-                _analysisNotice.Text = analysis.AvisoLegal;
+                _analysisNotice.Text = AiNotice.OrDefault(analysis.AvisoLegal);
                 if (analysis.Desatualizada)
                 {
                     SetStatus(_analysisStatus, "A IA está indisponível no momento. Esta é a última análise guardada, de " +
@@ -834,7 +820,7 @@ internal sealed partial class MainForm : AsyncForm
     private static void SetStatus(Label label, string text, bool error = false)
     {
         label.Text = text;
-        label.ForeColor = error ? UiTheme.Error : UiTheme.Muted;
+        label.ForeColor = error ? UiTheme.Error : UiTheme.InkMuted;
     }
 
     protected override void Dispose(bool disposing)

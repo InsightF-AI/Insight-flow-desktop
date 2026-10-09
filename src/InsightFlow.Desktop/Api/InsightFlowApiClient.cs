@@ -470,7 +470,7 @@ public sealed class InsightFlowApiClient
         }
 
         var message = DefaultErrorMessage(response.StatusCode);
-        // Server failures may contain internal details. Only business/validation errors are presented.
+        // Falhas do servidor podem trazer detalhes internos: só os erros de negócio e de validação são exibidos.
         if ((int)response.StatusCode is >= 400 and < 500)
         {
             message = await ReadErrorDetailAsync(response, cancellationToken).ConfigureAwait(false) ?? message;
