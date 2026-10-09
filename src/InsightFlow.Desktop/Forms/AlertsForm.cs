@@ -342,18 +342,8 @@ internal sealed class AlertsForm : AsyncForm
         }, HandleError);
     }
 
-    private async Task<decimal?> PriceAsync(Guid assetId, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return (await _api.GetQuoteAsync(assetId, cancellationToken)).Preco;
-        }
-        catch (Exception exception) when (!cancellationToken.IsCancellationRequested &&
-                                          exception is not ApiException { StatusCode: HttpStatusCode.Unauthorized })
-        {
-            return null;
-        }
-    }
+    private async Task<decimal?> PriceAsync(Guid assetId, CancellationToken cancellationToken) =>
+        (await _api.GetQuoteAsync(assetId, cancellationToken).OrNullAsync(cancellationToken))?.Preco;
 
     private void ShowPrice(DataGridViewRow row)
     {

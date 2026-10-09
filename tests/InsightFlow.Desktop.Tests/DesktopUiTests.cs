@@ -218,6 +218,9 @@ public sealed class DesktopUiTests
         Assert.Equal(40m, Field<NumericUpDown>(form, "_unitPrice").Value);
         Assert.Contains("Cotação atual: BRL 40,00", Field<Label>(form, "_assetHint").Text);
         Assert.Contains("Em carteira: 10", Field<Label>(form, "_assetHint").Text);
+        // O total acompanha quantidade e preço unitário.
+        Field<NumericUpDown>(form, "_quantity").Value = 3;
+        Assert.Equal("Valor total: BRL 120,00", Field<Label>(form, "_total").Text);
         Field<NumericUpDown>(form, "_unitPrice").Value = 39.5m;
         Invoke(form, "LoadAssetQuote");
         PumpUntil(() => !Work(form).HasPending);
@@ -227,6 +230,7 @@ public sealed class DesktopUiTests
         Field<ComboBox>(form, "_asset").SelectedIndex = 1;
         PumpUntil(() => !Work(form).HasPending);
         Assert.Equal(30.25m, Field<NumericUpDown>(form, "_unitPrice").Value);
+        Assert.Equal("Valor total: BRL 90,75", Field<Label>(form, "_total").Text);
         Assert.Contains("Cotação atual: BRL 30,25", Field<Label>(form, "_assetHint").Text);
         Assert.Contains("Em carteira: 0", Field<Label>(form, "_assetHint").Text);
         Field<ComboBox>(form, "_asset").SelectedIndex = 0;
@@ -350,6 +354,36 @@ public sealed class DesktopUiTests
         Assert.Contains("1 notificação(ões) marcada(s)", Field<Label>(form, "_status").Text);
         Assert.True(Field<Button>(form, "_markAllButton").Enabled);
         Assert.NotNull(session.AccessToken);
+    });
+
+    [Fact]
+    public Task Screens_with_ai_text_show_the_mandatory_notice_even_when_the_api_does_not_send_it() => OnUiThread(() =>
+    {
+        const string notice = "Análise gerada por IA. Não constitui recomendação de investimento.";
+        // Resumo diário sem "aviso_legal" no contexto.
+        var summary = $$"""[{"id":"{{Guid.NewGuid()}}","ativo_id":null,"tipo":"RESUMO_DIARIO","mensagem":"Resumo diario da carteira","contexto":{"texto":"A carteira subiu no dia."},"lida":false,"criado_em":"2026-10-08T21:30:00Z"}]""";
+        var handler = new RecordingHttpMessageHandler((request, _) => Task.FromResult(
+            RecordingHttpMessageHandler.Json(request.Uri.AbsolutePath == "/api/v1/notificacoes" ? summary : "[]")));
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test") };
+        var session = new UserSession(); session.Start("test-token");
+        var api = new InsightFlowApiClient(http, session);
+
+        using var chat = new ChatForm(api, session);
+        Assert.Equal(notice, Field<Label>(chat, "_notice").Text);
+
+        using var notifications = new NotificationsForm(api, session, new Dictionary<Guid, string>());
+        notifications.CreateControl();
+        Invoke(notifications, "LoadNotifications");
+        PumpUntil(() => !Work(notifications).HasPending);
+        Assert.Contains("A carteira subiu no dia.", Field<TextBox>(notifications, "_detail").Text);
+        Assert.EndsWith(notice, Field<TextBox>(notifications, "_detail").Text);
+
+        using var portfolio = new PortfolioForm(api, session, []);
+        portfolio.CreateControl();
+        Invoke(portfolio, "LoadAll");
+        PumpUntil(() => Field<int>(portfolio, "_loading") == 0);
+        Assert.Equal("A carteira subiu no dia.", Field<TextBox>(portfolio, "_summaryText").Text);
+        Assert.Equal(notice, Field<Label>(portfolio, "_summaryNotice").Text);
     });
 
     [Fact]

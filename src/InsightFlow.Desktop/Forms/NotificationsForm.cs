@@ -206,7 +206,7 @@ internal sealed class NotificationsForm : AsyncForm
             try
             {
                 // A API marca uma notificação por chamada; as que falharem continuam como não lidas na lista.
-                var results = await Task.WhenAll(unread.Select(item => MarkAsync(item, cancellationToken)));
+                var results = await Task.WhenAll(unread.Select(item => _api.MarkNotificationReadAsync(item.Id, cancellationToken).OrNullAsync(cancellationToken)));
                 if (!IsCurrentSession) return;
                 var updated = results.OfType<NotificationResponse>().ToDictionary(item => item.Id);
                 var all = Notifications().Select(item => updated.GetValueOrDefault(item.Id, item));
@@ -221,19 +221,6 @@ internal sealed class NotificationsForm : AsyncForm
                 if (IsCurrentSession) SetBusy(false);
             }
         }, HandleError);
-    }
-
-    private async Task<NotificationResponse?> MarkAsync(NotificationResponse notification, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await _api.MarkNotificationReadAsync(notification.Id, cancellationToken);
-        }
-        catch (Exception exception) when (!cancellationToken.IsCancellationRequested &&
-                                          exception is not ApiException { StatusCode: HttpStatusCode.Unauthorized })
-        {
-            return null;
-        }
     }
 
     private IEnumerable<NotificationResponse> Notifications() =>
@@ -257,11 +244,9 @@ internal sealed class NotificationsForm : AsyncForm
                     text.AppendLine();
                     text.AppendLine(summary);
                 }
-                if (ContextText(notification.Contexto, "aviso_legal") is { } notice)
-                {
-                    text.AppendLine();
-                    text.AppendLine(notice);
-                }
+                // O resumo é texto de IA: o aviso aparece mesmo quando a notificação não o traz.
+                text.AppendLine();
+                text.AppendLine(AiNotice.OrDefault(ContextText(notification.Contexto, "aviso_legal")));
                 break;
         }
         return text.ToString().TrimEnd().ReplaceLineEndings("\r\n");
