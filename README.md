@@ -37,7 +37,13 @@ Para gerar uma pasta distribuível (requer o runtime .NET 10 Desktop na máquina
 dotnet publish src/InsightFlow.Desktop -c Release -r win-x64 --self-contained false -o publish
 ```
 
-O executável gerado não é assinado; instalador, assinatura e ícone oficial continuam pendentes.
+Para gerar um único `.exe` que não depende do runtime instalado (cerca de 50 MB), com o `appsettings.json` ao lado:
+
+```powershell
+dotnet publish src/InsightFlow.Desktop -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o publish
+```
+
+O ícone do executável, das janelas e da bandeja é [Assets/insightflow.ico](src/InsightFlow.Desktop/Assets/insightflow.ico), feito a partir do avatar da organização no GitHub. O executável gerado não é assinado; instalador e assinatura continuam pendentes.
 
 ## Primeiro fluxo implementado
 

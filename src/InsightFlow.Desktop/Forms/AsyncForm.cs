@@ -15,6 +15,7 @@ internal class AsyncForm : Form
         // de criar seus controles (CompleteLayout); do contrário só as fontes cresceriam e os tamanhos fixos não.
         SuspendLayout();
         Font = new Font("Segoe UI", 10);
+        Icon = AppIcon.Window;
         AutoScaleDimensions = new SizeF(96, 96);
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = UiTheme.Background;
