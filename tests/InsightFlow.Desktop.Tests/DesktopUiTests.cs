@@ -143,6 +143,7 @@ public sealed class DesktopUiTests
     public Task Portfolio_grids_sort_by_value_and_a_failed_refresh_does_not_keep_old_totals() => OnUiThread(() =>
     {
         var petr = new AssetResponse { Id = Guid.NewGuid(), Ticker = "PETR4", Nome = "Petrobras", Tipo = "ACAO", Moeda = "BRL" };
+        var vivt = new AssetResponse { Id = Guid.NewGuid(), Ticker = "VIVT3", Nome = "Telefonica Brasil", Tipo = "ACAO", Moeda = "BRL" };
         var valeId = Guid.NewGuid();
         var profitabilityFails = false;
         string Operation(Guid assetId, string date, string quantity, string price) =>
@@ -161,6 +162,8 @@ public sealed class DesktopUiTests
             // Só PETR4 tem cotação: VALE3 fica sem variação do dia e fora da média ponderada.
             var path when path == $"/api/v1/ativos/{petr.Id}/cotacao" => RecordingHttpMessageHandler.Json(
                 """{"ticker":"PETR4","preco":"40","variacao":"0.78","variacao_percentual":"2","maxima_dia":"40.5","minima_dia":"39","volume":"150000"}"""),
+            var path when path == $"/api/v1/ativos/{vivt.Id}/cotacao" => RecordingHttpMessageHandler.Json(
+                """{"ticker":"VIVT3","preco":"30.25","variacao":"0","variacao_percentual":"0","maxima_dia":"30.5","minima_dia":"30","volume":"1000"}"""),
             var path when path.EndsWith("/cotacao") => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable),
             "/api/v1/portfolio/posicoes" => RecordingHttpMessageHandler.Json($$"""
                 [{"ativo_id":"{{petr.Id}}","ticker":"PETR4","quantidade":"10","preco_medio":"38.25","cotacao_atual":"40","valor_mercado":"400","valor_mercado_brl":"400","lucro_nao_realizado":"17.5","lucro_realizado":"0"},
@@ -175,7 +178,7 @@ public sealed class DesktopUiTests
         }));
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test") };
         var session = new UserSession(); session.Start("test-token");
-        using var form = new PortfolioForm(new InsightFlowApiClient(http, session), session, [petr]);
+        using var form = new PortfolioForm(new InsightFlowApiClient(http, session), session, [petr, vivt]);
         form.CreateControl();
         Invoke(form, "LoadAll");
         PumpUntil(() => Field<int>(form, "_loading") == 0);
@@ -219,6 +222,16 @@ public sealed class DesktopUiTests
         Invoke(form, "LoadAssetQuote");
         PumpUntil(() => !Work(form).HasPending);
         Assert.Equal(39.5m, Field<NumericUpDown>(form, "_unitPrice").Value);
+
+        // Ao trocar de ativo, o preço do anterior sai e entra a cotação do escolhido, mesmo que tivesse sido digitado.
+        Field<ComboBox>(form, "_asset").SelectedIndex = 1;
+        PumpUntil(() => !Work(form).HasPending);
+        Assert.Equal(30.25m, Field<NumericUpDown>(form, "_unitPrice").Value);
+        Assert.Contains("Cotação atual: BRL 30,25", Field<Label>(form, "_assetHint").Text);
+        Assert.Contains("Em carteira: 0", Field<Label>(form, "_assetHint").Text);
+        Field<ComboBox>(form, "_asset").SelectedIndex = 0;
+        PumpUntil(() => !Work(form).HasPending);
+        Assert.Equal(40m, Field<NumericUpDown>(form, "_unitPrice").Value);
 
         profitabilityFails = true;
         Invoke(form, "LoadAll");

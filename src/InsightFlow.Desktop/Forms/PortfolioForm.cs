@@ -69,6 +69,9 @@ internal sealed class PortfolioForm : AsyncForm
         _asset.SelectedIndexChanged += (_, _) =>
         {
             UpdateActions();
+            // O preço que estava no campo era de outro ativo: sai, e a cotação do ativo escolhido entra no lugar.
+            _unitPrice.Value = 0;
+            _suggestedPrice = null;
             LoadAssetQuote();
         };
         Shown += (_, _) =>
