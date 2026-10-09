@@ -180,4 +180,6 @@ O backend `develop` avançou do commit `a175cb6` para o `3ed5a8c`. O contrato no
 
 Evidência: compilação sem avisos e 90 testes aprovados (eram 75), incluindo renovação concorrente, refresh recusado, logout e o protocolo do WebSocket contra um servidor local.
 
-Não validado: execução contra o backend real nesta versão (o Docker estava parado na máquina), aviso na bandeja com notificação real e sessão de mais de 30 minutos em uso contínuo.
+Conferido depois, no mesmo dia, contra o backend `develop` (`3ed5a8c`) executado com `docker compose up`, por chamadas HTTP diretas: cadastro e login devolvem `access_token`, `refresh_token`, `token_type` e `expires_in` (1800); o refresh devolve um par novo aceito nas rotas autenticadas; depois do logout, o refresh token revogado é recusado com 401 "Refresh token invalido".
+
+Não validado: o WebSocket e o aviso na bandeja com notificação real, e uma sessão de mais de 30 minutos em uso contínuo.

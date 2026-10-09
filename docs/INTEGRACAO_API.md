@@ -25,7 +25,7 @@ Erros novos: 401 `"Refresh token invalido"` no refresh (expirado, revogado, já 
 
 Pendências resolvidas por esta versão do backend: refresh de sessão, logout remoto e entrega de notificações em tempo real. Continuam: busca sem `id`, recuperação de senha, moeda nas posições, histórico de dividendos e notificações com o aplicativo fechado (o desktop não tem canal de push).
 
-Verificação: testes automatizados com respostas HTTP controladas e um servidor WebSocket local. Esta versão do backend ainda não foi executada junto com o desktop.
+Verificação: testes automatizados com respostas HTTP controladas e um servidor WebSocket local. Cadastro, login, refresh e logout também foram conferidos por chamadas HTTP contra esta versão do backend em Docker; o WebSocket ainda não foi exercitado com o servidor real.
 
 ## Atualização de 30/09/2026: código do backend conferido
 
