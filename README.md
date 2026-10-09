@@ -55,7 +55,7 @@ O ícone do executável, das janelas e da bandeja é [Assets/insightflow.ico](sr
 
 1. Cadastrar uma conta ou entrar com e-mail e senha.
 2. Buscar um ativo e adicioná-lo explicitamente à watchlist, que mostra preço, variação do dia e quantidade de sinais vigentes de cada ativo.
-3. Selecionar um item para consultar cotação, gráfico de fechamento e volume, tabela OHLCV, indicadores técnicos e sinais.
+3. Selecionar um item para consultar cotação, gráfico de preço com indicadores, tabela OHLCV, indicadores técnicos e sinais.
 4. Selecionar um sinal para consultar ocorrências e retornos do backtest, preservando resultados indisponíveis.
 5. Criar, listar, editar, habilitar/desabilitar e excluir alertas de preço, com o preço atual e a distância até o alvo.
 6. Alterar a preferência de notificação da watchlist, remover um item ou encerrar a sessão.
@@ -65,19 +65,17 @@ O ícone do executável, das janelas e da bandeja é [Assets/insightflow.ico](sr
 
 Toda tela que exibe texto de IA (análise, chat e resumo diário) mostra o aviso "Análise gerada por IA. Não constitui recomendação de investimento.": o texto enviado pela API quando existe, e o mesmo aviso fixo quando ela não o envia. A interface é informativa: não há chamadas para comprar ou vender, e verde e vermelho indicam apenas valores positivos e negativos.
 
-O gráfico usa os registros OHLCV recebidos, em ordem cronológica, com consulta por mouse e teclado. Ele preserva o horário e o fuso recebidos, exibe um ponto quando há um único registro e trata séries constantes, vazias e falhas de consulta. O eixo horizontal usa espaçamento uniforme entre registros, sem presumir uma frequência de pregão.
+O gráfico usa os registros OHLCV recebidos, em ordem cronológica: linha de fechamento ou candles, SMA 20, SMA 50, bandas de Bollinger e, no painel inferior, volume ou RSI (14). A roda do mouse e as teclas + e − aproximam; duplo clique ou Esc voltam à série inteira; as setas percorrem os registros. As séries dos indicadores são calculadas no desktop sobre o histórico recebido, com as mesmas fórmulas do backend, porque a API devolve só o valor mais recente de cada indicador (exibido na aba Indicadores). Ele preserva o horário e o fuso recebidos, exibe um ponto quando há um único registro e trata séries constantes, vazias e falhas de consulta. O eixo horizontal usa espaçamento uniforme entre registros, sem presumir uma frequência de pregão.
 
 As tabelas guardam datas e valores tipados: clicar no título de uma coluna ordena pelo valor, e não pelo texto exibido. As janelas acompanham a escala do Windows (conferido em 125%; 150% e 200% ainda sem validação).
 
 ## Estado da integração
 
-O aplicativo usa endpoints reais, com erros e indisponibilidade apresentados na interface. O contrato foi conferido no código do backend e exercitado contra instâncias locais em Docker; a última conferência, em 09/10/2026, usou o backend em `a8bcb02` e cobriu watchlist, cotações, sinais, alertas, portfólio, resumo diário e uma análise por IA. Ainda não há um servidor mantido pela equipe para validar a integração. A IA depende de estar habilitada no servidor.
+O aplicativo usa endpoints reais, com erros e indisponibilidade apresentados na interface. O contrato foi conferido no código do backend e exercitado contra instâncias locais em Docker; a última conferência, em 09/10/2026, usou o backend em `a8bcb02` e cobriu watchlist, cotações, sinais, alertas, portfólio, resumo diário, análise e chat por IA e o aviso na bandeja com uma notificação recebida pelo WebSocket. Ainda não há um servidor mantido pela equipe para validar a integração. A IA depende de estar habilitada no servidor.
 
 Ainda pendentes:
 
-- validação do chat com o provedor de IA real e do aviso na bandeja com uma notificação real;
 - notificações com o aplicativo fechado (o desktop não tem canal de push);
-- candles, zoom e sobreposição de séries de indicadores no gráfico;
 - histórico de dividendos e recuperação de senha, que dependem de contrato no backend;
 - instalador e assinatura do executável.
 

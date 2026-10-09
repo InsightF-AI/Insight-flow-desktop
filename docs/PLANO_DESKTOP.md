@@ -209,3 +209,16 @@ Depois da entrega acima, o código do desktop foi revisto por inteiro com os ana
 - **README:** reorganizado em torno do estado atual; a base documental e o histórico das sincronizações ficam em `docs/`.
 
 Evidência: compilação sem avisos e 94 testes aprovados (eram 93). A linguagem da interface foi conferida por busca nos textos: não há chamadas para comprar ou vender.
+
+### Pendências do card do desktop (issue #10 do backend)
+
+O card pede gráficos de preço e indicadores fáceis de ler, e a regra do aviso legal nas telas com texto de IA. O aviso entrou na revisão acima; aqui entram o gráfico e as validações que faltavam com dados reais.
+
+- **Gráfico (marco 3):** linha de fechamento ou candles, SMA 20, SMA 50, bandas de Bollinger e, no painel inferior, volume ou RSI (14) com as faixas de 30 e 70. Zoom pela roda do mouse ou pelas teclas + e −, deslocamento com Shift + roda ou pelas setas, e volta à série inteira com duplo clique ou Esc. O detalhe do registro traz os indicadores ligados. O desenho continua nativo, sem biblioteca externa; o card cita LiveCharts2 ou ScottPlot como exemplos.
+- **Séries dos indicadores:** calculadas no desktop sobre o histórico recebido, com as fórmulas do backend; ver [Integração com a API](INTEGRACAO_API.md#indicadores-no-gráfico-09102026). Os valores oficiais continuam na aba Indicadores.
+- **Chat IA validado:** uma pergunta enviada pela tela ao backend local com o provedor real respondeu em 4,9 s (`gemini-3.5-flash`), com o aviso legal.
+- **Aviso na bandeja validado:** com a janela principal aberta e o WebSocket conectado, um alerta de preço disparado pelo ciclo do agendador do backend chegou em poucos segundos, atualizou o contador ("Notificações (4)") e o Windows exibiu o balão.
+
+Evidência: compilação sem avisos, 97 testes aprovados (eram 94) e capturas do gráfico em 125% com dados reais (linha, candles com Bollinger e RSI, e zoom).
+
+Continuam fora do alcance do desktop sozinho: notificações com o aplicativo fechado (não há canal de push), assinatura do executável (exige certificado) e a validação em 150% e 200% (a máquina de desenvolvimento usa 125%).

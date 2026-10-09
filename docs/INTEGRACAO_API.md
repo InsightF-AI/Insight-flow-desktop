@@ -1,5 +1,15 @@
 # Integração com a API InsightFlow
 
+## Indicadores no gráfico (09/10/2026)
+
+`GET /ativos/{id}/indicadores` devolve só o valor mais recente de cada indicador. Para desenhar a evolução no gráfico, o desktop calcula as séries de SMA 20, SMA 50, Bollinger (20, 2) e RSI (14) sobre os fechamentos do histórico, como o cliente web faz. São médias e desvios de uma lista de preços; sinais, backtest, carteira e textos de IA continuam vindo prontos da API.
+
+- **Fórmulas:** as mesmas do backend (pandas-ta): Bollinger com desvio-padrão amostral e RSI com suavização de Wilder iniciada na primeira variação.
+- **Registros anteriores:** além do período escolhido, a tela pede o histórico `5A` do ativo (os candles diários que o backend guarda) para as médias não começarem vazias. Se essa consulta falhar, os indicadores usam só o período exibido. `1D` (um ponto) e `5A` não fazem a segunda consulta.
+- **Conferência:** com o backend local em `a8bcb02`, o último valor de cada série calculada no desktop foi igual ao da API em PETR4, VALE3 (71 registros) e BTC (1000 registros), para SMA 20, SMA 50, RSI 14 e as duas bandas de Bollinger.
+
+Os valores exibidos na aba Indicadores continuam sendo os da API.
+
 ## Atualização de 09/10/2026: cliente web em `42f9176`
 
 O commit `42f9176` do `Insight-flow-web` (PR #15, "integra carteira, chat IA, alertas em tempo real e web push com a API real") foi lido para conferir como o web passou a usar a API. O contrato é o mesmo da seção de 08/10/2026: o backend só recebeu um commit desde então (`d3f80c6`, que carrega o `.env` no container) e o `openapi.json` da instância local lista as mesmas rotas. Web e backend não foram alterados. O desktop passou a usar as rotas que já consumia da mesma forma que o web:
