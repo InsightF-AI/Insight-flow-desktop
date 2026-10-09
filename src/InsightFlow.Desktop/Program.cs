@@ -32,10 +32,11 @@ internal static class Program
         using var httpClient = new HttpClient(handler)
         {
             BaseAddress = settings.BaseUrl,
-            Timeout = TimeSpan.FromSeconds(settings.TimeoutSeconds)
+            // O prazo é contado por chamada no cliente da API: análise e chat por IA esperam mais que as demais.
+            Timeout = Timeout.InfiniteTimeSpan
         };
         var session = new UserSession();
-        var api = new InsightFlowApiClient(httpClient, session);
+        var api = new InsightFlowApiClient(httpClient, session, TimeSpan.FromSeconds(settings.TimeoutSeconds));
         var notifications = new NotificationStream(settings.BaseUrl, session, api);
         var revocation = Task.CompletedTask;
         string? notice = null;

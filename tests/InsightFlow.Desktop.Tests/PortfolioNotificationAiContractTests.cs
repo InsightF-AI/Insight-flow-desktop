@@ -263,6 +263,29 @@ public sealed class PortfolioNotificationAiContractTests
         Assert.Equal(HttpMethod.Post, Assert.Single(handler.Requests).Method);
     }
 
+    [Fact]
+    public async Task The_request_timeout_counts_per_call_and_ai_calls_wait_longer()
+    {
+        // A resposta demora mais que o prazo comum: a cotação é interrompida, o chat (prazo de IA) é aguardado.
+        var handler = new RecordingHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(400), cancellationToken);
+            return RecordingHttpMessageHandler.Json(request.Uri.AbsolutePath == "/api/v1/chat"
+                ? """{"texto":"Resposta","modelo":"gemini-2.5-flash","aviso_legal":"Aviso"}"""
+                : """{"ticker":"PETR4","preco":"38.2","variacao":"0.5","variacao_percentual":"1.3","maxima_dia":"39","minima_dia":"37.7","volume":"150000"}""");
+        });
+        using var http = CreateHttpClient(handler);
+        http.Timeout = Timeout.InfiniteTimeSpan;
+        var api = new InsightFlowApiClient(http, new UserSession(), TimeSpan.FromMilliseconds(50));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => api.GetQuoteAsync(AssetId));
+        var answer = await api.ChatAsync([new ChatMessage(InsightFlowApiClient.ChatUser, "Oi")]);
+
+        Assert.Equal("Resposta", answer.Texto);
+        Assert.True(InsightFlowApiClient.AnalysisTimeout >= TimeSpan.FromMinutes(1));
+        Assert.True(InsightFlowApiClient.ChatTimeout >= InsightFlowApiClient.AnalysisTimeout);
+    }
+
     private static HttpClient CreateHttpClient(HttpMessageHandler handler) => new(handler)
     {
         BaseAddress = new Uri("https://api.example.test/")

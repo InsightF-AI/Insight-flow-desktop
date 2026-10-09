@@ -33,13 +33,21 @@ internal sealed class PortfolioForm : AsyncForm
     private readonly Button _registerButton = UiTheme.Button("&Registrar operação", true);
     private readonly Button _deleteButton = UiTheme.Button("&Excluir operação");
     private readonly Button _refreshButton = UiTheme.Button("&Atualizar");
-    private readonly ComboBox _benchmark = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
-    private readonly Button _compareButton = UiTheme.Button("&Comparar");
-    private readonly Label _comparison = UiTheme.Label("Escolha um índice e compare com a rentabilidade da carteira.", 10);
+    private readonly Label _comparison = UiTheme.Label("Carregando comparação com CDI e Ibovespa…", 10);
+    private readonly Label _assetHint = UiTheme.Label("", 8.5f);
+    private readonly TextBox _summaryText = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, BorderStyle = BorderStyle.None };
+    private readonly Label _summaryNotice = UiTheme.Label("", 8.5f);
+    private readonly Label _summaryStatus = UiTheme.Label("Carregando resumo diário…", 9);
+    // Cotações consultadas nesta tela, por ativo: variação do dia das posições e sugestão de preço da operação.
+    private readonly Dictionary<Guid, QuoteResponse> _quotes = [];
+    // Quantidade em carteira por ativo; nula enquanto as posições não foram carregadas.
+    private Dictionary<Guid, decimal>? _held;
+    private CancellationTokenSource? _assetQuoteCancellation;
+    private decimal? _suggestedPrice;
+    private int _positionsVersion;
     private readonly Label _status = UiTheme.Label("", 9);
     private int _loading;
     private bool _writing;
-    private bool _comparing;
 
     public bool SessionExpired { get; private set; }
     private bool Busy => _loading > 0 || _writing;
@@ -57,11 +65,25 @@ internal sealed class PortfolioForm : AsyncForm
         _refreshButton.Click += (_, _) => LoadAll();
         _registerButton.Click += (_, _) => Register();
         _deleteButton.Click += (_, _) => DeleteSelected();
-        _compareButton.Click += (_, _) => Compare();
         _operations.SelectionChanged += (_, _) => UpdateActions();
-        _asset.SelectedIndexChanged += (_, _) => UpdateActions();
-        Shown += (_, _) => LoadAll();
-        FormClosed += (_, _) => { _positions.Rows.Clear(); _operations.Rows.Clear(); _distribution.Rows.Clear(); };
+        _asset.SelectedIndexChanged += (_, _) =>
+        {
+            UpdateActions();
+            LoadAssetQuote();
+        };
+        Shown += (_, _) =>
+        {
+            LoadAll();
+            LoadAssetQuote();
+        };
+        FormClosed += (_, _) =>
+        {
+            _positions.Rows.Clear();
+            _operations.Rows.Clear();
+            _distribution.Rows.Clear();
+            _summaryText.Clear();
+            _quotes.Clear();
+        };
         UpdateActions();
         CompleteLayout();
     }
@@ -69,8 +91,8 @@ internal sealed class PortfolioForm : AsyncForm
     private void BuildLayout()
     {
         Text = "InsightFlow — Portfólio";
-        ClientSize = new Size(1120, 700);
-        MinimumSize = new Size(940, 600);
+        ClientSize = new Size(1200, 700);
+        MinimumSize = new Size(1080, 600);
         BackColor = UiTheme.Background;
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(22), BackColor = UiTheme.Background };
@@ -93,6 +115,7 @@ internal sealed class PortfolioForm : AsyncForm
         tabs.TabPages.Add(Page("Posições", BuildPositionsTab()));
         tabs.TabPages.Add(Page("Operações", BuildOperationsTab()));
         tabs.TabPages.Add(Page("Distribuição e benchmark", BuildDistributionTab()));
+        tabs.TabPages.Add(Page("Resumo diário", BuildSummaryTab()));
         root.Controls.Add(tabs, 0, 1);
         _status.Dock = DockStyle.Fill;
         _status.Margin = new Padding(0, 12, 0, 0);
@@ -114,16 +137,17 @@ internal sealed class PortfolioForm : AsyncForm
         metrics.Controls.Add(MetricBlock("LUCRO REALIZADO", _realized));
         metrics.Controls.Add(MetricBlock("RENTABILIDADE", _return));
         panel.Controls.Add(metrics, 0, 0);
-        _positions.Columns.Add(GridCells.Column("Ativo", 55f));
-        _positions.Columns.Add(GridCells.Column("Quantidade", 90f, typeof(decimal), GridCells.Number, true));
+        _positions.Columns.Add(GridCells.Column("Ativo", 50f));
+        _positions.Columns.Add(GridCells.Column("Quantidade", 78f, typeof(decimal), GridCells.Number, true));
         foreach (var (name, weight) in new[]
                  {
-                     ("Preço médio", 85f), ("Cotação", 80f), ("Valor de mercado", 95f),
-                     ("Valor (BRL)", 90f), ("Lucro não realizado", 100f), ("Lucro realizado", 90f)
+                     ("Preço médio", 100f), ("Cotação", 100f), ("Var. dia", 62f), ("Valor de mercado", 96f),
+                     ("Valor (BRL)", 96f), ("Lucro não realizado", 92f), ("Resultado", 84f), ("Lucro realizado", 86f)
                  })
         {
             // A moeda varia por ativo: o formato monetário é definido em cada linha.
-            _positions.Columns.Add(GridCells.Column(name, weight, typeof(decimal), alignRight: true));
+            _positions.Columns.Add(GridCells.Column(name, weight, typeof(decimal),
+                name is "Var. dia" or "Resultado" ? GridCells.SignedPercent : null, true));
         }
         _positions.AccessibleName = "Posições da carteira";
         panel.Controls.Add(_positions, 0, 1);
@@ -177,28 +201,33 @@ internal sealed class PortfolioForm : AsyncForm
         AddWide(UiTheme.Label("NOVA OPERAÇÃO", 9, true), 0);
         AddWide(FieldLabel("Ativo"), 1);
         AddWide(_asset, 2);
-        editor.Controls.Add(FieldLabel("Tipo"), 0, 3);
-        editor.Controls.Add(FieldLabel("Data"), 1, 3);
+        // Cotação atual (sugerida como preço unitário) e quantidade em carteira do ativo escolhido.
+        _assetHint.ForeColor = UiTheme.InkMuted;
+        _assetHint.Margin = new Padding(3, 4, 0, 0);
+        _assetHint.MaximumSize = new Size(290, 0);
+        AddWide(_assetHint, 3);
+        editor.Controls.Add(FieldLabel("Tipo"), 0, 4);
+        editor.Controls.Add(FieldLabel("Data"), 1, 4);
         _type.Margin = new Padding(3, 3, 8, 3);
-        editor.Controls.Add(_type, 0, 4);
-        editor.Controls.Add(_date, 1, 4);
-        editor.Controls.Add(FieldLabel("Quantidade"), 0, 5);
-        editor.Controls.Add(FieldLabel("Preço unitário"), 1, 5);
+        editor.Controls.Add(_type, 0, 5);
+        editor.Controls.Add(_date, 1, 5);
+        editor.Controls.Add(FieldLabel("Quantidade"), 0, 6);
+        editor.Controls.Add(FieldLabel("Preço unitário"), 1, 6);
         _quantity.Margin = new Padding(3, 3, 8, 3);
-        editor.Controls.Add(_quantity, 0, 6);
-        editor.Controls.Add(_unitPrice, 1, 6);
+        editor.Controls.Add(_quantity, 0, 7);
+        editor.Controls.Add(_unitPrice, 1, 7);
         var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, Margin = new Padding(0, 16, 0, 8) };
         actions.Controls.Add(_registerButton);
         actions.Controls.Add(_deleteButton);
-        AddWide(actions, 7);
+        AddWide(actions, 8);
         var note = UiTheme.Label(_assets.Count == 0
             ? "Adicione ativos à watchlist para registrar operações: a API exige o identificador interno do ativo."
             : "Somente ativos da sua watchlist aparecem na lista. O preço é informado na moeda do ativo. Vendas acima da quantidade em carteira são recusadas pela API.", 8.5f);
         note.ForeColor = UiTheme.InkMuted;
         note.MaximumSize = new Size(290, 0);
-        AddWide(note, 8);
+        AddWide(note, 9);
 
-        var split = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, Size = new Size(1040, 500), SplitterDistance = 690, Panel1MinSize = 420, Panel2MinSize = 320, BackColor = UiTheme.Border };
+        var split = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, Size = new Size(1120, 500), SplitterDistance = 770, Panel1MinSize = 420, Panel2MinSize = 320, BackColor = UiTheme.Border };
         split.Panel1.BackColor = UiTheme.Surface;
         split.Panel1.Controls.Add(left);
         split.Panel2.BackColor = UiTheme.Surface;
@@ -216,19 +245,10 @@ internal sealed class PortfolioForm : AsyncForm
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var benchmarkRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, BackColor = Color.Transparent, WrapContents = true };
-        var benchmarkTitle = UiTheme.Label("BENCHMARK", 9, true);
+        // CDI e Ibovespa são consultados junto com o restante da tela, como no cliente web.
+        var benchmarkTitle = UiTheme.Label("CARTEIRA E BENCHMARKS", 9, true);
         benchmarkTitle.ForeColor = UiTheme.InkSecondary;
-        benchmarkTitle.Margin = new Padding(0, 10, 12, 0);
-        benchmarkRow.Controls.Add(benchmarkTitle);
-        UiTheme.StyleCombo(_benchmark);
-        _benchmark.DisplayMember = nameof(TypeChoice.Label);
-        _benchmark.Items.AddRange([new TypeChoice(InsightFlowApiClient.BenchmarkCdi, "CDI"), new TypeChoice(InsightFlowApiClient.BenchmarkIbovespa, "Ibovespa")]);
-        _benchmark.SelectedIndex = 0;
-        _benchmark.Margin = new Padding(0, 7, 10, 0);
-        benchmarkRow.Controls.Add(_benchmark);
-        benchmarkRow.Controls.Add(_compareButton);
-        panel.Controls.Add(benchmarkRow, 0, 0);
+        panel.Controls.Add(benchmarkTitle, 0, 0);
         _comparison.Dock = DockStyle.Fill;
         _comparison.ForeColor = UiTheme.InkSecondary;
         _comparison.Margin = new Padding(0, 6, 0, 16);
@@ -246,19 +266,47 @@ internal sealed class PortfolioForm : AsyncForm
         return panel;
     }
 
+    private Control BuildSummaryTab()
+    {
+        var panel = Card(4);
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var title = UiTheme.Label("RESUMO DIÁRIO DA CARTEIRA · IA", 9, true);
+        title.ForeColor = UiTheme.Violet;
+        panel.Controls.Add(title, 0, 0);
+        _summaryText.BackColor = UiTheme.Surface;
+        _summaryText.ForeColor = UiTheme.Ink;
+        _summaryText.Font = UiTheme.Font(10);
+        _summaryText.AccessibleName = "Resumo diário da carteira gerado por IA";
+        panel.Controls.Add(_summaryText, 0, 1);
+        _summaryNotice.Dock = DockStyle.Fill;
+        _summaryNotice.ForeColor = UiTheme.InkMuted;
+        _summaryNotice.Margin = new Padding(0, 8, 0, 0);
+        panel.Controls.Add(_summaryNotice, 0, 2);
+        _summaryStatus.Dock = DockStyle.Fill;
+        panel.Controls.Add(_summaryStatus, 0, 3);
+        return panel;
+    }
+
     private void LoadAll()
     {
         if (Busy || !IsCurrentSession) return;
-        _loading = 4;
+        _loading = 6;
         UpdateActions();
         SetStatus(_positionStatus, "Carregando posições…");
         SetStatus(_operationStatus, "Carregando operações…");
         SetStatus(_distributionStatus, "Carregando distribuição…");
+        SetStatus(_comparison, "Carregando comparação com CDI e Ibovespa…");
+        SetStatus(_summaryStatus, "Carregando resumo diário…");
         // Cada seção falha de forma independente: uma fonte indisponível não esconde as demais.
-        LoadSection(async token => BindPositions(await _api.GetPositionsAsync(token)), _positionStatus);
+        LoadSection(async token => BindPositions(await _api.GetPositionsAsync(token)), _positionStatus, ForgetHoldings);
         LoadSection(async token => BindProfitability(await _api.GetProfitabilityAsync(token)), _positionStatus, ClearProfitability);
         LoadSection(async token => BindOperations(await _api.GetOperationsAsync(token)), _operationStatus);
         LoadSection(async token => BindDistribution(await _api.GetDistributionAsync(token)), _distributionStatus);
+        LoadSection(LoadBenchmarksAsync, _comparison);
+        LoadSection(async token => BindSummary(await _api.GetNotificationsAsync(cancellationToken: token)), _summaryStatus, ClearSummary);
     }
 
     private void LoadSection(Func<CancellationToken, Task> load, Label status, Action? onFailure = null)
@@ -287,23 +335,179 @@ internal sealed class PortfolioForm : AsyncForm
     private void BindPositions(IReadOnlyList<PositionResponse> positions)
     {
         if (!IsCurrentSession) return;
+        var version = ++_positionsVersion;
         _positions.Rows.Clear();
         foreach (var position in positions.OrderByDescending(position => position.ValorMercadoBrl))
         {
             _tickers[position.AtivoId] = position.Ticker;
-            var index = _positions.Rows.Add(position.Ticker, position.Quantidade, position.PrecoMedio, position.CotacaoAtual,
-                position.ValorMercado, position.ValorMercadoBrl, position.LucroNaoRealizado, position.LucroRealizado);
-            var row = _positions.Rows[index];
+            var cost = position.Quantidade * position.PrecoMedio;
+            // Lucro não realizado sobre o custo da posição, em pontos percentuais.
+            decimal? result = cost > 0 ? position.LucroNaoRealizado / cost * 100 : null;
+            // "Var. dia" fica vazia até a cotação do ativo chegar.
+            var row = _positions.Rows[_positions.Rows.Add(position.Ticker, position.Quantidade, position.PrecoMedio, position.CotacaoAtual)];
+            row.Cells["Valor de mercado"].Value = position.ValorMercado;
+            row.Cells["Valor (BRL)"].Value = position.ValorMercadoBrl;
+            row.Cells["Lucro não realizado"].Value = position.LucroNaoRealizado;
+            row.Cells["Resultado"].Value = result;
+            row.Cells["Lucro realizado"].Value = position.LucroRealizado;
             row.SetFormat(GridCells.Money(Currency(position.AtivoId)), "Preço médio", "Cotação", "Valor de mercado", "Lucro não realizado", "Lucro realizado");
             row.SetFormat(GridCells.Money("BRL"), "Valor (BRL)");
-            row.Cells["Lucro não realizado"].Style.ForeColor = Tone(position.LucroNaoRealizado);
+            row.Cells["Lucro não realizado"].Style.ForeColor = row.Cells["Resultado"].Style.ForeColor = Tone(position.LucroNaoRealizado);
             row.Tag = position;
         }
         // As posições informam o ticker de ativos que já saíram da watchlist.
         foreach (DataGridViewRow row in _operations.Rows) row.Cells["Ativo"].Value = Ticker(((OperationResponse)row.Tag!).AtivoId);
-        SetStatus(_positionStatus, positions.Count == 0
-            ? "Nenhuma posição aberta. Registre operações na aba Operações."
-            : $"{positions.Count} posição(ões) aberta(s). Ativos sem cotação disponível são omitidos pela API.");
+        _held = positions.GroupBy(position => position.AtivoId).ToDictionary(group => group.Key, group => group.Sum(position => position.Quantidade));
+        ShowAssetHint();
+        SetStatus(_positionStatus, PositionSummary(positions.Count, null));
+        LoadPositionQuotes(positions, version);
+    }
+
+    private static string PositionSummary(int count, decimal? dayChange) => count == 0
+        ? "Nenhuma posição aberta. Registre operações na aba Operações."
+        : $"{count} posição(ões) aberta(s)" +
+          (dayChange is { } change ? $" · Variação do dia: {change.ToString(GridCells.SignedPercent, CultureInfo.CurrentCulture)}, ponderada pelo valor em BRL" : "") +
+          ". Ativos sem cotação disponível são omitidos pela API.";
+
+    // A posição não informa a variação do dia: ela vem da cotação de cada ativo, como no cliente web.
+    private void LoadPositionQuotes(IReadOnlyList<PositionResponse> positions, int version)
+    {
+        if (positions.Count == 0) return;
+        Run(async cancellationToken =>
+        {
+            var quotes = await Task.WhenAll(positions.Select(position => QuoteOrNullAsync(position.AtivoId, cancellationToken)));
+            if (!IsCurrentSession || version != _positionsVersion) return;
+            decimal weighted = 0, weight = 0;
+            for (var i = 0; i < positions.Count; i++)
+            {
+                if (quotes[i] is not { } quote)
+                {
+                    _quotes.Remove(positions[i].AtivoId);
+                    continue;
+                }
+                _quotes[positions[i].AtivoId] = quote;
+                weighted += quote.VariacaoPercentual * positions[i].ValorMercadoBrl;
+                weight += positions[i].ValorMercadoBrl;
+            }
+            foreach (DataGridViewRow row in _positions.Rows)
+            {
+                var cell = row.Cells["Var. dia"];
+                cell.Value = _quotes.TryGetValue(((PositionResponse)row.Tag!).AtivoId, out var quote) ? quote.VariacaoPercentual : null;
+                cell.Style.ForeColor = cell.Value is decimal change ? Tone(change) : Color.Empty;
+            }
+            ShowAssetHint();
+            // Uma falha já exibida nesta linha (posições ou rentabilidade) não é substituída pelo resumo.
+            if (weight > 0 && _positionStatus.ForeColor != UiTheme.Error)
+                SetStatus(_positionStatus, PositionSummary(positions.Count, weighted / weight));
+        }, exception => HandleError(exception, _positionStatus));
+    }
+
+    // Só a sessão recusada e o fechamento da tela interrompem a consulta; sem cotação, o dado fica em branco.
+    private async Task<QuoteResponse?> QuoteOrNullAsync(Guid assetId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _api.GetQuoteAsync(assetId, cancellationToken);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested &&
+                                          exception is not ApiException { StatusCode: HttpStatusCode.Unauthorized })
+        {
+            return null;
+        }
+    }
+
+    private void ForgetHoldings()
+    {
+        _held = null;
+        ShowAssetHint();
+    }
+
+    private void LoadAssetQuote()
+    {
+        _assetQuoteCancellation?.Cancel();
+        ShowAssetHint();
+        if (_asset.SelectedItem is not AssetChoice choice || !IsCurrentSession) return;
+        Run(async lifetime =>
+        {
+            using var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+            _assetQuoteCancellation = request;
+            try
+            {
+                var quote = await QuoteOrNullAsync(choice.Asset.Id, request.Token);
+                if (quote is null || !IsCurrentSession || request.IsCancellationRequested) return;
+                _quotes[choice.Asset.Id] = quote;
+                ShowAssetHint();
+                // A cotação atual só substitui o preço enquanto ele estiver vazio ou for a sugestão anterior.
+                if (_unitPrice.Value == 0 || _unitPrice.Value == _suggestedPrice)
+                {
+                    _unitPrice.Value = quote.Preco;
+                    _suggestedPrice = _unitPrice.Value;
+                }
+            }
+            catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+            finally
+            {
+                if (ReferenceEquals(_assetQuoteCancellation, request)) _assetQuoteCancellation = null;
+            }
+        }, exception => HandleError(exception, _status));
+    }
+
+    private void ShowAssetHint()
+    {
+        var parts = new List<string>();
+        if (_asset.SelectedItem is AssetChoice choice)
+        {
+            if (_quotes.TryGetValue(choice.Asset.Id, out var quote)) parts.Add($"Cotação atual: {Money(choice.Asset.Moeda, quote.Preco)}");
+            if (_held is not null) parts.Add($"Em carteira: {_held.GetValueOrDefault(choice.Asset.Id).ToString(GridCells.Number, CultureInfo.CurrentCulture)}");
+        }
+        _assetHint.Text = string.Join("   ·   ", parts);
+    }
+
+    private async Task LoadBenchmarksAsync(CancellationToken cancellationToken)
+    {
+        BenchmarkComparisonResponse cdi, ibovespa;
+        try
+        {
+            // As duas comparações cobrem o mesmo período: desde a primeira operação registrada.
+            var cdiTask = _api.GetBenchmarkComparisonAsync(InsightFlowApiClient.BenchmarkCdi, cancellationToken);
+            var ibovespaTask = _api.GetBenchmarkComparisonAsync(InsightFlowApiClient.BenchmarkIbovespa, cancellationToken);
+            cdi = await cdiTask;
+            ibovespa = await ibovespaTask;
+        }
+        catch (ApiException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+        {
+            if (IsCurrentSession) SetStatus(_comparison, "Registre ao menos uma operação para comparar a carteira com o CDI e o Ibovespa.");
+            return;
+        }
+        if (!IsCurrentSession) return;
+        static string Index(BenchmarkComparisonResponse comparison) =>
+            comparison.RentabilidadeBenchmarkPercentual is { } value ? Percent(value) : "indisponível no momento";
+        _comparison.ForeColor = UiTheme.InkSecondary;
+        _comparison.Text = $"Carteira: {Percent(cdi.RentabilidadeCarteiraPercentual)}   ·   CDI: {Index(cdi)}   ·   Ibovespa: {Index(ibovespa)}\n" +
+                           "Período desde a primeira operação registrada.";
+    }
+
+    // O resumo diário é gerado pelo agendador do backend e entregue como notificação RESUMO_DIARIO.
+    private void BindSummary(IReadOnlyList<NotificationResponse> notifications)
+    {
+        if (!IsCurrentSession) return;
+        var latest = notifications.Where(item => item.Tipo == "RESUMO_DIARIO").MaxBy(item => item.CriadoEm);
+        if (latest is null)
+        {
+            ClearSummary();
+            SetStatus(_summaryStatus, "Nenhum resumo gerado ainda. O servidor gera o resumo diário da carteira por IA ao fim do pregão e ele aparece aqui.");
+            return;
+        }
+        _summaryText.Text = (NotificationsForm.ContextText(latest.Contexto, "texto") ?? latest.Mensagem).ReplaceLineEndings("\r\n");
+        _summaryNotice.Text = NotificationsForm.ContextText(latest.Contexto, "aviso_legal")
+                              ?? "Conteúdo informativo gerado por IA; não é recomendação de investimento.";
+        SetStatus(_summaryStatus, $"Gerado pelo servidor em {latest.CriadoEm.LocalDateTime:dd/MM/yyyy HH:mm}. Também aparece em Notificações.");
+    }
+
+    private void ClearSummary()
+    {
+        _summaryText.Clear();
+        _summaryNotice.Text = "";
     }
 
     private void BindProfitability(ProfitabilityResponse profitability)
@@ -443,46 +647,11 @@ internal sealed class PortfolioForm : AsyncForm
             $"Sem essa operação, uma venda posterior de {Ticker(selected.AtivoId)} ficaria maior que a quantidade em carteira."));
     }
 
-    private void Compare()
-    {
-        if (_comparing || !IsCurrentSession || _benchmark.SelectedItem is not TypeChoice benchmark) return;
-        _comparing = true;
-        UpdateActions();
-        _comparison.ForeColor = UiTheme.InkSecondary;
-        _comparison.Text = $"Consultando {benchmark.Label}…";
-        Run(async cancellationToken =>
-        {
-            try
-            {
-                var result = await _api.GetBenchmarkComparisonAsync(benchmark.Value, cancellationToken);
-                if (!IsCurrentSession) return;
-                var index = result.RentabilidadeBenchmarkPercentual is { } value
-                    ? Percent(value)
-                    : "indisponível no momento";
-                _comparison.Text = $"Carteira: {Percent(result.RentabilidadeCarteiraPercentual)}   ·   {benchmark.Label}: {index}\n" +
-                                   "Período desde a primeira operação registrada.";
-            }
-            catch (ApiException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
-            {
-                if (IsCurrentSession) _comparison.Text = "Registre ao menos uma operação para comparar a carteira.";
-            }
-            finally
-            {
-                if (IsCurrentSession)
-                {
-                    _comparing = false;
-                    UpdateActions();
-                }
-            }
-        }, exception => HandleError(exception, _comparison));
-    }
-
     private void UpdateActions()
     {
         UiTheme.SetButtonEnabled(_refreshButton, !Busy);
         UiTheme.SetButtonEnabled(_registerButton, !Busy && _asset.SelectedItem is AssetChoice, true);
         UiTheme.SetButtonEnabled(_deleteButton, !Busy && SelectedOperation is not null);
-        UiTheme.SetButtonEnabled(_compareButton, !_comparing);
         _operations.Enabled = !_writing;
     }
 

@@ -113,7 +113,7 @@ internal sealed class ChatForm : AsyncForm
         AppendMessage("Você", text, UiTheme.Accent);
         _input.Clear();
         SetBusy(true);
-        SetStatus("Aguardando resposta da IA…");
+        SetStatus("Aguardando resposta da IA… Pode levar até 1 minuto.");
         Run(async cancellationToken =>
         {
             try
