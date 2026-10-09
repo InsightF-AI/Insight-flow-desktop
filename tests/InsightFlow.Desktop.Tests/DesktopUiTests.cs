@@ -217,6 +217,30 @@ public sealed class DesktopUiTests
         Assert.Contains("38,2", Field<Label>(form, "_quotePrice").Text);
     });
 
+    [Fact]
+    public Task Logging_out_clears_the_local_session_and_revokes_the_refresh_token_on_the_server() => OnUiThread(() =>
+    {
+        var handler = new RecordingHttpMessageHandler((request, _) => Task.FromResult(request.Uri.AbsolutePath == "/api/v1/auth/logout"
+            ? new HttpResponseMessage(HttpStatusCode.NoContent)
+            : RecordingHttpMessageHandler.Json("[]")));
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test") };
+        var session = new UserSession(); session.Start("test-token", "test-refresh-token", DateTimeOffset.UtcNow.AddMinutes(30));
+        using var form = new MainForm(new InsightFlowApiClient(http, session), session, http.BaseAddress);
+        form.CreateControl();
+
+        Invoke(form, "EndSession", false);
+        PumpUntil(() => form.Revocation.IsCompleted);
+
+        Assert.True(form.LogoutRequested);
+        Assert.False(form.SessionExpired);
+        Assert.Null(session.AccessToken);
+        Assert.Null(session.RefreshToken);
+        var logout = Assert.Single(handler.Requests);
+        Assert.Equal("/api/v1/auth/logout", logout.Uri.AbsolutePath);
+        Assert.Null(logout.Authorization);
+        Assert.Contains("test-refresh-token", logout.Body);
+    });
+
     private static AlertResponse Alert() => new()
     {
         Id = Guid.NewGuid(), Ativo = new AssetResponse { Id = Guid.NewGuid(), Ticker = "PETR4", Nome = "Petrobras", Tipo = "ACAO", Moeda = "BRL" },

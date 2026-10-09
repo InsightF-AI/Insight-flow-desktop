@@ -214,7 +214,7 @@ internal sealed class LoginForm : AsyncForm
                     ? await _api.RegisterAsync(name, email, password, cancellationToken)
                     : await _api.LoginAsync(email, password, cancellationToken);
                 if (cancellationToken.IsCancellationRequested) return;
-                _session.Start(response.AccessToken);
+                _session.Start(response.AccessToken, response.RefreshToken, DateTimeOffset.UtcNow.AddSeconds(response.ExpiresIn));
                 _password.Clear();
                 Authenticated = true;
                 Close();

@@ -47,7 +47,7 @@ O PDF §7 reserva duas semanas para desktop e notificações dentro de um cronog
 |---|---|---|
 | Antes de integrar | HTML representa uma branch, sem garantia de deploy | Obter URL de homologação/desenvolvimento e identificar commit/esquema compatível |
 | Antes de abrir detalhes pela busca | Busca exemplifica ticker sem UUID; consultas requerem `ativo_id` | Pedir ID na busca ou contrato de resolução. Até lá, detalhes por `ativo.id` da watchlist, após inclusão intencional |
-| Sessão | DOCX RNF-04 exige refresh; HTML §3 informa que não existe | Implementar novo login no contrato atual e manter refresh como requisito pendente do backend |
+| Sessão | DOCX RNF-04 exige refresh; HTML §3 informa que não existe | Resolvido em 08/10/2026: o backend passou a ter refresh e logout, e o desktop renova a sessão sozinho |
 | Sessão | UC-01 menciona recuperação de senha; HTML não descreve rota | Confirmar fluxo e contrato antes de disponibilizar ação funcional |
 | Análise técnica | RF-08/RN-03 exigem contexto de 24 meses; HTML não explicita janela consultada nem unidade dos retornos | Confirmar período e unidade antes de rotular percentuais ou afirmar cobertura de 24 meses |
 | Análise técnica | PDF §2.1 menciona taxa de acerto; HTML fornece quantidade de ocorrências e retornos médios | Definir métrica/contrato de taxa de acerto; retorno médio não é probabilidade de sucesso |
@@ -167,3 +167,19 @@ Evidência: compilação sem avisos, 75 testes aprovados (eram 40) e capturas de
 Não validado nesta revisão: escalas de 150% e 200%, troca de monitor com a janela aberta, e os itens que dependem do servidor (sinais gerados pelo agendador, aviso na bandeja com notificação real e IA com provedor configurado).
 
 Sugestões ao backend, sem alteração feita por este repositório: mensagem legível para `QuantidadeInsuficienteError` (hoje o `detail` é o UUID do ativo), `id` no resultado da busca e moeda nas posições.
+
+## Sincronização com o backend em 08/10/2026
+
+O backend `develop` avançou do commit `a175cb6` para o `3ed5a8c`. O contrato novo e o tratamento de cada mudança estão em [Integração com a API](INTEGRACAO_API.md#atualização-de-08102026-backend-develop-em-3ed5a8c). O backend não foi alterado.
+
+- **Sessão (marco 1):** cadastro, login e refresh devolvem access token de 30 minutos e refresh token. O cliente renova o access token perto do vencimento ou ao receber 401, uma renovação por vez, e repete a requisição uma única vez. As telas abertas continuam na mesma sessão. Só um refresh recusado leva ao login.
+- **Logout:** sair ou fechar a janela principal revoga o login no servidor em segundo plano, além de apagar a sessão local.
+- **Notificações (marco 5):** conexão WebSocket com autenticação na primeira mensagem, reautenticação antes do vencimento do token, reconexão com espera crescente e tratamento do fechamento 4401. Cada aviso dispara a consulta das não lidas, que continua deduplicando por `id`. A consulta periódica de 2 minutos permanece como complemento.
+- **IA:** a análise devolvida como `desatualizada` é exibida com aviso e data.
+- **Sem mudança de código:** criptomoedas via Binance, tipo `INDICE`, histórico `1D` com ponto único e séries `1A`/`5A` mais curtas.
+
+Evidência: compilação sem avisos e 90 testes aprovados (eram 75), incluindo renovação concorrente, refresh recusado, logout e o protocolo do WebSocket contra um servidor local.
+
+Conferido depois, no mesmo dia, contra o backend `develop` (`3ed5a8c`) executado com `docker compose up`, por chamadas HTTP diretas: cadastro e login devolvem `access_token`, `refresh_token`, `token_type` e `expires_in` (1800); o refresh devolve um par novo aceito nas rotas autenticadas; depois do logout, o refresh token revogado é recusado com 401 "Refresh token invalido".
+
+Não validado: o WebSocket e o aviso na bandeja com notificação real, e uma sessão de mais de 30 minutos em uso contínuo.

@@ -29,7 +29,7 @@ dotnet src/InsightFlow.Desktop/bin/Debug/net10.0-windows/InsightFlow.Desktop.dll
 
 O mesmo bloqueio pode atingir a DLL depois de uma alteração no código, impedindo também `dotnet test`. Nesse caso, rode os testes no CI ou em outra máquina.
 
-A variável de ambiente tem precedência sobre [appsettings.json](src/InsightFlow.Desktop/appsettings.json). Fora de loopback, a URL deve usar HTTPS. Senhas são enviadas apenas no cadastro/login; o token fica em memória e é apagado ao sair. O aplicativo não inclui credenciais de demonstração nem inicia o backend automaticamente. Se a configuração for inválida, a mensagem de inicialização informa o motivo.
+A variável de ambiente tem precedência sobre [appsettings.json](src/InsightFlow.Desktop/appsettings.json). Fora de loopback, a URL deve usar HTTPS. Senhas são enviadas apenas no cadastro/login; o access token (30 minutos) e o refresh token ficam em memória, são renovados automaticamente durante o uso e, ao sair, são apagados e revogados no servidor. O aplicativo não inclui credenciais de demonstração nem inicia o backend automaticamente. Se a configuração for inválida, a mensagem de inicialização informa o motivo.
 
 Para gerar uma pasta distribuível (requer o runtime .NET 10 Desktop na máquina de destino):
 
@@ -37,7 +37,13 @@ Para gerar uma pasta distribuível (requer o runtime .NET 10 Desktop na máquina
 dotnet publish src/InsightFlow.Desktop -c Release -r win-x64 --self-contained false -o publish
 ```
 
-O executável gerado não é assinado; instalador, assinatura e ícone oficial continuam pendentes.
+Para gerar um único `.exe` que não depende do runtime instalado (cerca de 50 MB), com o `appsettings.json` ao lado:
+
+```powershell
+dotnet publish src/InsightFlow.Desktop -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o publish
+```
+
+O ícone do executável, das janelas e da bandeja é [Assets/insightflow.ico](src/InsightFlow.Desktop/Assets/insightflow.ico), feito a partir do avatar da organização no GitHub. O executável gerado não é assinado; instalador e assinatura continuam pendentes.
 
 ## Primeiro fluxo implementado
 
@@ -47,7 +53,7 @@ O executável gerado não é assinado; instalador, assinatura e ícone oficial c
 4. Selecionar um sinal para consultar ocorrências e retornos do backtest, preservando resultados indisponíveis.
 5. Criar, listar, editar, habilitar/desabilitar e excluir alertas de preço.
 6. Alterar a preferência de notificação da watchlist, remover um item ou encerrar a sessão.
-7. Consultar notificações (sinais, alertas disparados e resumo diário), marcar como lidas e receber avisos na bandeja do Windows enquanto o app está aberto.
+7. Consultar notificações (sinais, alertas disparados e resumo diário), marcar como lidas e receber avisos na bandeja do Windows, em tempo real pelo WebSocket da API, enquanto o app está aberto.
 8. Registrar operações simuladas e acompanhar posições, rentabilidade, comparação com CDI/Ibovespa e distribuição da carteira.
 9. Gerar a análise por IA de um ativo e conversar com o Chat IA, sempre com o aviso legal retornado pela API.
 
@@ -71,7 +77,7 @@ tests/InsightFlow.Desktop.Tests/
 docs/
 ```
 
-O aplicativo usa os componentes do .NET/Windows Forms, sem bibliotecas externas em runtime. Os testes usam xUnit com respostas HTTP controladas; eles não acessam contas reais. Os contratos automatizados cobrem autenticação, sessão, busca, watchlist, análise técnica, alertas, notificações, portfólio, IA, erros, cancelamento e respostas sem corpo. Há também testes da configuração da URL, das mensagens de erro, dos formatos de apresentação e das telas (ordenação das tabelas, layout e fluxos assíncronos).
+O aplicativo usa os componentes do .NET/Windows Forms, sem bibliotecas externas em runtime. Os testes usam xUnit com respostas HTTP controladas; eles não acessam contas reais. Os contratos automatizados cobrem autenticação, sessão e sua renovação, WebSocket de notificações, busca, watchlist, análise técnica, alertas, notificações, portfólio, IA, erros, cancelamento e respostas sem corpo. Há também testes da configuração da URL, das mensagens de erro, dos formatos de apresentação e das telas (ordenação das tabelas, layout e fluxos assíncronos).
 
 ## Validar
 
@@ -100,6 +106,6 @@ Repositório: [InsightF-AI/Insight-flow-desktop](https://github.com/InsightF-AI/
 
 Validar o fluxo completo já estruturado com o backend da equipe, confirmando a URL da API e o contrato correspondente à versão em execução. O gráfico inicial usa os registros OHLCV recebidos, ordenados cronologicamente, com consulta por mouse e teclado. Candles, zoom e sobreposição de séries de indicadores ficam para uma etapa posterior.
 
-Portfólio, IA e notificações foram integrados a partir do código do backend (`develop`, commit `a175cb6`); ver [Integração com a API](docs/INTEGRACAO_API.md).
+Portfólio, IA e notificações foram integrados a partir do código do backend. A última sincronização, em 08/10/2026, cobre a `develop` até o commit `3ed5a8c` (refresh de sessão, logout remoto e WebSocket de notificações); ver [Integração com a API](docs/INTEGRACAO_API.md).
 
 O gráfico preserva o horário/fuso recebido, exibe um ponto quando há somente um registro e trata séries constantes, vazias e falhas de consulta. O eixo horizontal representa registros com espaçamento uniforme; não presume uma frequência de pregão. A tabela mantém os valores exatos para consulta.

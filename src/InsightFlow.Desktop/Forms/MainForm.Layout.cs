@@ -39,7 +39,7 @@ internal sealed partial class MainForm
     private readonly TextBox _analysisText = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, BorderStyle = BorderStyle.None };
     private readonly Label _analysisNotice = UiTheme.Label("", 8.5f);
     private readonly Label _analysisStatus = UiTheme.Label("Selecione um ativo para gerar a análise.", 9);
-    private readonly NotifyIcon _tray = new() { Icon = SystemIcons.Information, Text = "InsightFlow" };
+    private readonly NotifyIcon _tray = new() { Icon = AppIcon.Tray, Text = "InsightFlow" };
     private readonly System.Windows.Forms.Timer _notificationTimer = new() { Interval = NotificationPollMilliseconds };
     private Button _notificationsNav = null!;
 

@@ -36,6 +36,8 @@ internal static class Program
         };
         var session = new UserSession();
         var api = new InsightFlowApiClient(httpClient, session);
+        var notifications = new NotificationStream(settings.BaseUrl, session, api);
+        var revocation = Task.CompletedTask;
         string? notice = null;
         try
         {
@@ -47,8 +49,9 @@ internal static class Program
                     if (!login.Authenticated) break;
                 }
 
-                using var main = new MainForm(api, session, settings.BaseUrl);
+                using var main = new MainForm(api, session, settings.BaseUrl, notifications);
                 main.ShowDialog();
+                revocation = main.Revocation;
                 if (!main.LogoutRequested) break;
                 notice = main.SessionExpired ? "Sua sessão expirou. Entre novamente para continuar." : "Você saiu da conta.";
             }
@@ -56,6 +59,8 @@ internal static class Program
         finally
         {
             session.Clear();
+            // Ao fechar o aplicativo, dá um instante para a revogação do login chegar ao servidor.
+            revocation.Wait(TimeSpan.FromSeconds(3));
         }
     }
 }

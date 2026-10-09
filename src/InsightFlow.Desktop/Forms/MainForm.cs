@@ -9,11 +9,13 @@ namespace InsightFlow.Desktop.Forms;
 
 internal sealed partial class MainForm : AsyncForm
 {
-    // Não há push/SSE no backend; a caixa de notificações é consultada periodicamente enquanto a janela está aberta.
+    // O WebSocket avisa das notificações na hora, mas não reenvia o que chegou com a conexão caída;
+    // a consulta periódica cobre essas lacunas e os servidores sem o canal de tempo real.
     private const int NotificationPollMilliseconds = 120_000;
     private readonly HashSet<Guid> _knownNotifications = [];
     private readonly InsightFlowApiClient _api;
     private readonly UserSession _session;
+    private readonly NotificationStream? _notificationStream;
     private readonly int _sessionVersion;
     private readonly List<WatchlistItemResponse> _watchlist = [];
     private CancellationTokenSource? _searchCancellation;
@@ -27,19 +29,23 @@ internal sealed partial class MainForm : AsyncForm
     private bool _watchBusy;
     private bool _endingSession;
     private bool _pollingNotifications;
+    private bool _pollAgain;
     private bool _notificationsSeeded;
     private bool _dialogOpen;
     private FormWindowState _restoredState = FormWindowState.Normal;
 
     public bool LogoutRequested { get; private set; }
     public bool SessionExpired { get; private set; }
+    // Revogação do login no servidor, iniciada ao sair; quem encerra o aplicativo pode aguardá-la por um instante.
+    public Task Revocation { get; private set; } = Task.CompletedTask;
     private WatchlistItemResponse? SelectedItem => _watchGrid.CurrentRow?.Tag as WatchlistItemResponse;
     private bool IsCurrentSession => !IsClosing && _session.Version == _sessionVersion;
 
-    public MainForm(InsightFlowApiClient api, UserSession session, Uri apiUrl)
+    public MainForm(InsightFlowApiClient api, UserSession session, Uri apiUrl, NotificationStream? notificationStream = null)
     {
         _api = api;
         _session = session;
+        _notificationStream = notificationStream;
         _sessionVersion = session.Version;
         BuildLayout(apiUrl);
         _searchButton.Click += (_, _) => Search();
@@ -85,11 +91,12 @@ internal sealed partial class MainForm : AsyncForm
             _tray.Visible = true;
             PollNotifications();
             _notificationTimer.Start();
+            ListenForNotifications();
         };
         FormClosed += (_, _) =>
         {
             StopNotifications();
-            _session.Clear();
+            RevokeSession();
             _watchlist.Clear();
             _searchResults.Items.Clear();
             _watchGrid.Rows.Clear();
@@ -503,8 +510,17 @@ internal sealed partial class MainForm : AsyncForm
                 if (!IsCurrentDetail(detailVersion, request.Token)) return;
                 _analysisText.Text = analysis.Texto.ReplaceLineEndings("\r\n");
                 _analysisNotice.Text = analysis.AvisoLegal;
-                SetStatus(_analysisStatus, $"Gerada em {analysis.GeradoEm.LocalDateTime:dd/MM/yyyy HH:mm} por {analysis.Modelo}" +
-                                           (analysis.EmCache ? " · reaproveitada pelo servidor (dados sem alteração)." : "."));
+                if (analysis.Desatualizada)
+                {
+                    SetStatus(_analysisStatus, "A IA está indisponível no momento. Esta é a última análise guardada, de " +
+                                               $"{analysis.GeradoEm.LocalDateTime:dd/MM/yyyy HH:mm} ({analysis.Modelo}); pode estar desatualizada.");
+                    _analysisStatus.ForeColor = UiTheme.Amber;
+                }
+                else
+                {
+                    SetStatus(_analysisStatus, $"Gerada em {analysis.GeradoEm.LocalDateTime:dd/MM/yyyy HH:mm} por {analysis.Modelo}" +
+                                               (analysis.EmCache ? " · reaproveitada pelo servidor (dados sem alteração)." : "."));
+                }
             }
             catch (OperationCanceledException) when (request.IsCancellationRequested) { }
             catch (Exception exception)
@@ -521,9 +537,23 @@ internal sealed partial class MainForm : AsyncForm
         }, exception => HandleError(exception, _analysisStatus));
     }
 
+    private void ListenForNotifications()
+    {
+        if (_notificationStream is not { } stream || SynchronizationContext.Current is not { } ui) return;
+        // A conexão vive fora da thread de interface; cada aviso volta a ela para consultar as não lidas.
+        Run(cancellationToken => Task.Run(
+            () => stream.RunAsync(() => ui.Post(_ => PollNotifications(), null), cancellationToken), cancellationToken), _ => { });
+    }
+
     private void PollNotifications()
     {
-        if (_pollingNotifications || !IsCurrentSession) return;
+        if (!IsCurrentSession) return;
+        if (_pollingNotifications)
+        {
+            // Um aviso que chega durante uma consulta pede outra em seguida, para não perder a notificação nova.
+            _pollAgain = true;
+            return;
+        }
         _pollingNotifications = true;
         Run(async cancellationToken =>
         {
@@ -561,6 +591,11 @@ internal sealed partial class MainForm : AsyncForm
             finally
             {
                 _pollingNotifications = false;
+                if (_pollAgain)
+                {
+                    _pollAgain = false;
+                    PollNotifications();
+                }
             }
         }, _ => { });
     }
@@ -622,7 +657,9 @@ internal sealed partial class MainForm : AsyncForm
         SessionExpired = expired;
         LogoutRequested = true;
         StopNotifications();
-        _session.Clear();
+        // Numa sessão expirada o servidor já recusou o refresh token: não há o que revogar.
+        if (expired) _session.Clear();
+        else RevokeSession();
         _searchCancellation?.Cancel();
         _detailCancellation?.Cancel();
         _backtestCancellation?.Cancel();
@@ -635,6 +672,27 @@ internal sealed partial class MainForm : AsyncForm
         _signals.Rows.Clear();
         _backtest.Rows.Clear();
         Close();
+    }
+
+    // Sair apaga a sessão local na hora; a revogação no servidor segue em segundo plano e não impede a saída se falhar.
+    private void RevokeSession()
+    {
+        var refreshToken = _session.RefreshToken;
+        _session.Clear();
+        if (refreshToken is not null) Revocation = RevokeAsync(refreshToken);
+    }
+
+    private async Task RevokeAsync(string refreshToken)
+    {
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await _api.LogoutAsync(refreshToken, timeout.Token).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is ApiException or HttpRequestException or OperationCanceledException)
+        {
+            // Sem resposta do servidor, o refresh token descartado simplesmente expira.
+        }
     }
 
     private static string Number(decimal value) => value.ToString("#,0.########", CultureInfo.CurrentCulture);

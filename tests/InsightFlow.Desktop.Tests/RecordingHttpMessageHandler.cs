@@ -42,7 +42,8 @@ internal sealed class RecordingHttpMessageHandler(
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken));
 
-        Requests.Add(recorded);
+        // As repetições após a renovação do token podem chegar de threads diferentes.
+        lock (Requests) Requests.Add(recorded);
         return await respond(recorded, cancellationToken);
     }
 }

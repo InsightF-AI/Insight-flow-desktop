@@ -1,5 +1,32 @@
 # Integração com a API InsightFlow
 
+## Atualização de 08/10/2026: backend `develop` em `3ed5a8c`
+
+O código da branch `develop` do backend foi relido do commit `a175cb6` até o `3ed5a8c` (PRs #39 a #50), junto com o `docs/api-reference.html` que agora acompanha o repositório. O backend não foi alterado. Esta seção prevalece sobre as seguintes onde houver diferença.
+
+O que mudou no contrato e como o desktop passou a tratar:
+
+| Mudança no backend | Efeito no desktop |
+| --- | --- |
+| `TokenResponse` ganhou `refresh_token` e `expires_in` (segundos). O access token passou de 24 horas para **30 minutos**; o refresh token vale 30 dias. | Os dois campos são obrigatórios na resposta de cadastro, login e refresh. A sessão guarda, em memória, os dois tokens e o vencimento. |
+| `POST /auth/refresh` `{refresh_token}` → novo par; o refresh token anterior é invalidado (rotação). Reuso de um refresh token revoga o login inteiro. | O cliente HTTP renova o access token quando faltam menos de 60 s para o vencimento e, diante de um 401 em rota autenticada, renova e repete a requisição **uma vez**. As renovações são serializadas: requisições paralelas esperam a mesma renovação. Refresh recusado (401) encerra a sessão e leva ao login. |
+| `POST /auth/logout` `{refresh_token}` → 204, revoga aquele login. | "Sair" e o fechamento da janela principal apagam a sessão local e enviam a revogação em segundo plano; falha de rede não impede a saída. Sessão expirada não envia logout. |
+| `WS /notificacoes/ws`: a primeira mensagem é `{"tipo":"autenticar","token":"<access_token>"}` (em até 10 s); o servidor responde `{"tipo":"autenticado"}` e passa a enviar `{"tipo":"notificacao","notificacao":{…}}` e `{"tipo":"ping"}` a cada 30 s. Fecha com **4401** se o token for inválido ou expirar. | A janela principal mantém a conexão enquanto está aberta. A cada conexão autenticada e a cada notificação, consulta `/notificacoes?apenas_nao_lidas=true` e avisa pela bandeja. Antes do vencimento, renova o token e envia `autenticar` de novo na mesma conexão; num 4401, renova e reconecta. Silêncio de 90 s ou queda reconecta com espera crescente (2 s a 60 s). O token nunca vai na URL nem em cabeçalho. |
+| O WebSocket não reenvia o que chegou com a conexão caída. | A consulta periódica de 2 minutos foi mantida como complemento e como única via em servidores sem o WebSocket. |
+| `AnaliseIAResponse` ganhou `desatualizada`: verdadeiro quando o provedor de IA falhou e o backend devolveu a última análise guardada (sempre com `em_cache: true`). | Campo obrigatório; a aba "Análise IA" avisa que a análise é a última guardada, com a data, e pode estar desatualizada. O 503 só ocorre quando não há análise anterior. |
+| Criptomoedas via Binance: o ticker é o código da moeda (`BTC`, `ETH`…), `tipo: "CRIPTO"`, sempre em `BRL`; variação e máxima/mínima são das últimas 24 h. | Sem mudança de código: busca, watchlist, alertas e operações já usam ticker, tipo e moeda como vêm da API. |
+| `TipoAtivo` ganhou `INDICE` (Ibovespa, uso interno do benchmark; não aparece em busca nem watchlist). | Sem mudança: o tipo é exibido como texto. |
+| Histórico: `1D` devolve **um único ponto** montado com a cotação atual; `1A`/`5A` devolvem os candles diários que o backend já guardou e podem vir mais curtos que o período; cache de 24 h por período. | Sem mudança: o gráfico e a tabela já aceitam um ponto e séries de qualquer tamanho. |
+| Benchmark Ibovespa funciona no plano gratuito da brapi; continua `null` quando a fonte está indisponível. | Sem mudança. |
+| Toda resposta HTTP traz `X-Request-ID`; CORS configurável; logs estruturados; limite de taxa e retentativa nas integrações. | Sem efeito no desktop (CORS não se aplica a cliente nativo). O `X-Request-ID` ainda não é exibido nas mensagens de erro. |
+| `POST`/`DELETE /dispositivos` (push Expo) e `/web-push/*` (VAPID). | Não se aplicam: são os canais do mobile e do web. O desktop recebe pelo WebSocket enquanto está aberto. |
+
+Erros novos: 401 `"Refresh token invalido"` no refresh (expirado, revogado, já usado ou usuário desativado) e 503 nas rotas de mercado quando a fonte (brapi ou Binance) está indisponível, com a mesma mensagem de antes.
+
+Pendências resolvidas por esta versão do backend: refresh de sessão, logout remoto e entrega de notificações em tempo real. Continuam: busca sem `id`, recuperação de senha, moeda nas posições, histórico de dividendos e notificações com o aplicativo fechado (o desktop não tem canal de push).
+
+Verificação: testes automatizados com respostas HTTP controladas e um servidor WebSocket local. Cadastro, login, refresh e logout também foram conferidos por chamadas HTTP contra esta versão do backend em Docker; o WebSocket ainda não foi exercitado com o servidor real.
+
 ## Atualização de 30/09/2026: código do backend conferido
 
 O código da branch `develop` do repositório `InsightF-AI/Insight-flow-backend` (commit `a175cb6`, 29/09/2026) foi lido para confirmar o contrato. O backend não foi alterado nem executado nesta etapa. A branch `feature/alerta-service`, base da referência HTML abaixo, não existe mais no repositório.
