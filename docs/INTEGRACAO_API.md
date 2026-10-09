@@ -1,5 +1,29 @@
 # Integração com a API InsightFlow
 
+## Atualização de 09/10/2026: cliente web em `42f9176`
+
+O commit `42f9176` do `Insight-flow-web` (PR #15, "integra carteira, chat IA, alertas em tempo real e web push com a API real") foi lido para conferir como o web passou a usar a API. O contrato é o mesmo da seção de 08/10/2026: o backend só recebeu um commit desde então (`d3f80c6`, que carrega o `.env` no container) e o `openapi.json` da instância local lista as mesmas rotas. Web e backend não foram alterados. O desktop passou a usar as rotas que já consumia da mesma forma que o web:
+
+| O que o web faz com a API | No desktop |
+| --- | --- |
+| Espera até 70 s pela análise (`GET /ativos/{id}/analise`) e 90 s pelo chat (`POST /chat`); as demais chamadas têm 20 s. | O prazo passou a ser contado por chamada. `Api.TimeoutSeconds` (30 s por padrão) vale para as chamadas comuns; análise e chat esperam 70 s e 90 s, ou o valor configurado, se for maior. Antes, o prazo único de 30 s interrompia respostas de IA mais lentas. |
+| Watchlist com a cotação e a quantidade de sinais vigentes de cada ativo (`/cotacao` e `/sinais` por item). | A grade da watchlist ganhou Preço, Var. dia e Sinais. Cada ativo falha em separado: sem cotação, a célula fica vazia. |
+| Alertas com o preço atual e o progresso até o alvo (uma cotação por ativo, não por alerta). | Colunas Preço atual e Distância (quanto o preço precisa variar para chegar ao alvo) e contagem dos alertas com a condição satisfeita no preço atual. O estado continua sendo o `ultimo_estado` do backend. Preço e alvo só são comparados quando estão na mesma moeda. |
+| Posições com a variação do dia, vinda da cotação, e o resultado percentual; carteira comparada com CDI e Ibovespa ao abrir. | Colunas Var. dia e Resultado, variação do dia da carteira ponderada pelo valor em BRL, e os dois benchmarks consultados junto com a tela (o botão "Comparar" saiu). |
+| Resumo diário lido da notificação `RESUMO_DIARIO` mais recente (`contexto.texto` e `contexto.aviso_legal`). | Aba "Resumo diário" no Portfólio, com o aviso legal. |
+| Nova operação sugere a cotação atual como preço e mostra a quantidade em carteira. | O formulário mostra a cotação atual e a quantidade em carteira do ativo escolhido e sugere a cotação como preço unitário enquanto o campo não for editado. A venda acima da posição continua sendo recusada pela API, que avalia a data informada. |
+| Marca todas as notificações como lidas de uma vez. | Botão "Marcar todas como lidas" em Notificações: um `PATCH` por notificação; as que falharem continuam não lidas. |
+
+Diferenças mantidas de propósito:
+
+- **Períodos do histórico:** o web oferece só `1M` e `3M`. O backend local respondeu a todos (PETR4: 1, 5, 22, 64, 71 e 71 pontos; BTC: 1, 7, 30, 90, 365 e 1000), então o desktop mantém os seis.
+- **Ticker do alerta:** o web limita a lista à watchlist. O backend aceitou alertas para tickers fora dela (ITUB4 e VALE3), então o campo continua livre.
+- **Operação de ativo fora da watchlist:** o web inclui o ativo na watchlist sem perguntar; o desktop continua exigindo a inclusão explícita.
+- **Web push e service worker:** canal do navegador. O desktop recebe pelo WebSocket enquanto está aberto.
+- **Notícias, rankings, score, sessões, perfil e recuperação de senha:** continuam simulados no web, sem rota no backend.
+
+Verificação: testes automatizados e as telas abertas contra o backend local em Docker (`a8bcb02`), com uma conta de teste: watchlist com três ativos, três alertas, quatro operações, uma análise por IA (18,7 s) e um resumo diário gerado pelo job do backend. Não validado nesta rodada: o chat com o provedor real e o aviso na bandeja.
+
 ## Atualização de 08/10/2026: backend `develop` em `3ed5a8c`
 
 O código da branch `develop` do backend foi relido do commit `a175cb6` até o `3ed5a8c` (PRs #39 a #50), junto com o `docs/api-reference.html` que agora acompanha o repositório. O backend não foi alterado. Esta seção prevalece sobre as seguintes onde houver diferença.

@@ -1,6 +1,8 @@
-# Diretrizes de UX/UI do desktop
+| Navegação para Portfólio, Alertas e Chat IA | Cada item abre o seu módulo integrado: Portfólio, Alertas, Notificações e Chat IA |
+| Regra de alerta com valor atual e barra de progresso até o alvo | Colunas "Preço atual" e "Distância" na tabela de alertas |
+| Resumo diário por IA no dashboard | Aba "Resumo diário" do Portfólio, em destaque violeta e com o aviso legal || Dashboard com watchlist, cotação e sinais por ativo | Watchlist com preço, variação do dia e sinais vigentes; cotação e OHLCV do ativo selecionado; cards sem dados reais não são exibidos |# Diretrizes de UX/UI do desktop
 
-Referência visual: repositório [`InsightF-AI/Insight-flow-web`](https://github.com/InsightF-AI/Insight-flow-web), commit observado `058b8ed`, em 16/09/2026. O cliente web declara que seus dados são mockados; ele foi usado como referência de interface e fluxo, não como fonte de dados ou contrato de integração.
+Referência visual: repositório [`InsightF-AI/Insight-flow-web`](https://github.com/InsightF-AI/Insight-flow-web), commit observado `058b8ed`, em 16/09/2026. O cliente web declara que seus dados são mockados; ele foi usado como referência de interface e fluxo, não como fonte de dados ou contrato de integração. Em 09/10/2026 o web já consumia a API real (commit `42f9176`) e foi relido como referência de fluxo; a identidade visual não mudou.
 
 ## Identidade adotada
 

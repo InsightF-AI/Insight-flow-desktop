@@ -31,6 +31,8 @@ O mesmo bloqueio pode atingir a DLL depois de uma alteração no código, impedi
 
 A variável de ambiente tem precedência sobre [appsettings.json](src/InsightFlow.Desktop/appsettings.json). Fora de loopback, a URL deve usar HTTPS. Senhas são enviadas apenas no cadastro/login; o access token (30 minutos) e o refresh token ficam em memória, são renovados automaticamente durante o uso e, ao sair, são apagados e revogados no servidor. O aplicativo não inclui credenciais de demonstração nem inicia o backend automaticamente. Se a configuração for inválida, a mensagem de inicialização informa o motivo.
 
+`Api.TimeoutSeconds` (30 por padrão, de 1 a 300) é o prazo de cada chamada comum. A análise por IA e o chat esperam 70 s e 90 s, ou o valor configurado, se for maior: o provedor de IA do servidor pode levar perto de um minuto.
+
 Para gerar uma pasta distribuível (requer o runtime .NET 10 Desktop na máquina de destino):
 
 ```powershell
@@ -48,13 +50,13 @@ O ícone do executável, das janelas e da bandeja é [Assets/insightflow.ico](sr
 ## Primeiro fluxo implementado
 
 1. Cadastrar uma conta ou entrar com e-mail e senha.
-2. Buscar um ativo e adicioná-lo explicitamente à watchlist.
+2. Buscar um ativo e adicioná-lo explicitamente à watchlist, que mostra preço, variação do dia e quantidade de sinais vigentes de cada ativo.
 3. Selecionar um item para consultar cotação, gráfico de fechamento e volume, tabela OHLCV, indicadores técnicos e sinais.
 4. Selecionar um sinal para consultar ocorrências e retornos do backtest, preservando resultados indisponíveis.
-5. Criar, listar, editar, habilitar/desabilitar e excluir alertas de preço.
+5. Criar, listar, editar, habilitar/desabilitar e excluir alertas de preço, com o preço atual e a distância até o alvo.
 6. Alterar a preferência de notificação da watchlist, remover um item ou encerrar a sessão.
-7. Consultar notificações (sinais, alertas disparados e resumo diário), marcar como lidas e receber avisos na bandeja do Windows, em tempo real pelo WebSocket da API, enquanto o app está aberto.
-8. Registrar operações simuladas e acompanhar posições, rentabilidade, comparação com CDI/Ibovespa e distribuição da carteira.
+7. Consultar notificações (sinais, alertas disparados e resumo diário), marcar uma ou todas como lidas e receber avisos na bandeja do Windows, em tempo real pelo WebSocket da API, enquanto o app está aberto.
+8. Registrar operações simuladas e acompanhar posições com variação do dia, rentabilidade, comparação com CDI e Ibovespa, distribuição da carteira e o resumo diário gerado pelo servidor.
 9. Gerar a análise por IA de um ativo e conversar com o Chat IA, sempre com o aviso legal retornado pela API.
 
 O fluxo usa endpoints reais, com erros e indisponibilidade apresentados na interface. O contrato foi conferido no código da branch `develop` do backend (commit `a175cb6`) e exercitado contra uma instância local desse backend em 30/09/2026; em 01/10/2026 o contrato foi reconferido sem diferenças. A integração com um servidor mantido pela equipe ainda precisa ser validada. A IA depende de estar habilitada no servidor.
@@ -106,6 +108,6 @@ Repositório: [InsightF-AI/Insight-flow-desktop](https://github.com/InsightF-AI/
 
 Validar o fluxo completo já estruturado com o backend da equipe, confirmando a URL da API e o contrato correspondente à versão em execução. O gráfico inicial usa os registros OHLCV recebidos, ordenados cronologicamente, com consulta por mouse e teclado. Candles, zoom e sobreposição de séries de indicadores ficam para uma etapa posterior.
 
-Portfólio, IA e notificações foram integrados a partir do código do backend. A última sincronização, em 08/10/2026, cobre a `develop` até o commit `3ed5a8c` (refresh de sessão, logout remoto e WebSocket de notificações); ver [Integração com a API](docs/INTEGRACAO_API.md).
+Portfólio, IA e notificações foram integrados a partir do código do backend. A última sincronização, em 08/10/2026, cobre a `develop` até o commit `3ed5a8c` (refresh de sessão, logout remoto e WebSocket de notificações); ver [Integração com a API](docs/INTEGRACAO_API.md). Em 09/10/2026 o desktop passou a usar as mesmas rotas como o cliente web (commit `42f9176`): cotação e sinais na watchlist, preço atual nos alertas, variação do dia e resumo diário no portfólio e prazo maior para a IA.
 
 O gráfico preserva o horário/fuso recebido, exibe um ponto quando há somente um registro e trata séries constantes, vazias e falhas de consulta. O eixo horizontal representa registros com espaçamento uniforme; não presume uma frequência de pregão. A tabela mantém os valores exatos para consulta.
