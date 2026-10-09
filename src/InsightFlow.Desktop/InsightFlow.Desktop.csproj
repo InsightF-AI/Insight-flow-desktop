@@ -8,9 +8,12 @@
     <RootNamespace>InsightFlow.Desktop</RootNamespace>
     <AssemblyName>InsightFlow.Desktop</AssemblyName>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>Assets\insightflow.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
-    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- Fica ao lado do executável mesmo na publicação em arquivo único, para a URL da API poder ser editada. -->
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <EmbeddedResource Include="Assets\insightflow.ico" LogicalName="InsightFlow.Desktop.insightflow.ico" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="InsightFlow.Desktop.Tests" />
