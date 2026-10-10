@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using InsightFlow.Desktop.Api;
 using InsightFlow.Desktop.Api.Contracts;
@@ -20,10 +21,14 @@ internal sealed class AlertsForm : AsyncForm
     private readonly Button _saveButton = UiTheme.Button("&Criar alerta", true);
     private readonly Button _deleteButton = UiTheme.Button("&Excluir");
     private readonly Button _refreshButton = UiTheme.Button("&Atualizar");
+    private readonly Label _currentPrice = UiTheme.Label("", 8.5f);
     private readonly Label _status = UiTheme.Label("Carregando alertas…", 9);
+    // Preço atual por ativo, para mostrar a distância até o alvo; ativos sem cotação ficam fora.
+    private readonly Dictionary<Guid, decimal> _prices = [];
     private bool _busy;
     private bool _binding;
     private bool _creating = true;
+    private bool _summaryShown;
 
     public bool SessionExpired { get; private set; }
     private AlertResponse? SelectedAlert => _grid.CurrentRow?.Tag as AlertResponse;
@@ -42,7 +47,7 @@ internal sealed class AlertsForm : AsyncForm
         _deleteButton.Click += (_, _) => Delete();
         _refreshButton.Click += (_, _) => LoadAlerts();
         Shown += (_, _) => LoadAlerts();
-        FormClosed += (_, _) => _grid.Rows.Clear();
+        FormClosed += (_, _) => { _grid.Rows.Clear(); _prices.Clear(); };
         BeginNew();
         CompleteLayout();
     }
@@ -50,8 +55,8 @@ internal sealed class AlertsForm : AsyncForm
     private void BuildLayout()
     {
         Text = "InsightFlow — Alertas de preço";
-        ClientSize = new Size(980, 700);
-        MinimumSize = new Size(850, 520);
+        ClientSize = new Size(1100, 700);
+        MinimumSize = new Size(1060, 520);
         BackColor = UiTheme.Background;
         UiTheme.StyleInput(_ticker);
         UiTheme.StyleCombo(_condition);
@@ -66,14 +71,19 @@ internal sealed class AlertsForm : AsyncForm
         ]);
         _condition.SelectedIndex = 0;
 
-        _grid.Columns.Add(GridCells.Column("Ativo", 60f));
-        _grid.Columns.Add(GridCells.Column("Condição", 90f));
-        _grid.Columns.Add(GridCells.Column("Preço-alvo", 100f, typeof(decimal)));
-        _grid.Columns.Add(GridCells.Column("Estado", 120f));
-        _grid.Columns.Add(GridCells.Column("Último disparo", 125f, typeof(DateTime), GridCells.DateTime));
+        _grid.Columns.Add(GridCells.Column("Ativo", 64f));
+        _grid.Columns.Add(GridCells.Column("Condição", 76f));
+        _grid.Columns.Add(GridCells.Column("Preço-alvo", 122f, typeof(decimal)));
+        _grid.Columns.Add(GridCells.Column("Preço atual", 122f, typeof(decimal)));
+        // Quanto o preço atual precisa variar para chegar ao alvo.
+        _grid.Columns.Add(GridCells.Column("Distância", 92f, typeof(decimal), GridCells.SignedPercent));
+        _grid.Columns.Add(GridCells.Column("Estado", 108f));
+        _grid.Columns.Add(GridCells.Column("Último disparo", 114f, typeof(DateTime), GridCells.DateTime));
         _grid.AccessibleName = "Alertas de preço cadastrados";
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(22), BackColor = UiTheme.Background };
+        // Sem estilo, a coluna cresce até o tamanho inicial da divisão e a janela menor corta o painel da direita.
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -90,7 +100,7 @@ internal sealed class AlertsForm : AsyncForm
         header.Controls.Add(_refreshButton, 1, 0);
         root.Controls.Add(header, 0, 0);
 
-        var split = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, Size = new Size(930, 450), SplitterDistance = 600, Panel1MinSize = 370, Panel2MinSize = 320, BackColor = UiTheme.Border };
+        var split = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, Size = new Size(1050, 450), SplitterDistance = 720, Panel1MinSize = 370, Panel2MinSize = 320, BackColor = UiTheme.Border };
         split.Panel1.BackColor = UiTheme.Surface;
         split.Panel1.Padding = new Padding(12);
         split.Panel1.Controls.Add(_grid);
@@ -109,7 +119,7 @@ internal sealed class AlertsForm : AsyncForm
 
     private Control BuildEditor()
     {
-        var editor = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, RowCount = 10, AutoSize = true, BackColor = UiTheme.Surface };
+        var editor = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, RowCount = 11, AutoSize = true, BackColor = UiTheme.Surface };
         editor.Controls.Add(UiTheme.Label("DADOS DO ALERTA", 9, true));
         editor.Controls.Add(FieldLabel("Ticker"));
         editor.Controls.Add(_ticker);
@@ -117,6 +127,9 @@ internal sealed class AlertsForm : AsyncForm
         editor.Controls.Add(_condition);
         editor.Controls.Add(FieldLabel("Preço-alvo"));
         editor.Controls.Add(_target);
+        _currentPrice.ForeColor = UiTheme.InkMuted;
+        _currentPrice.Margin = new Padding(0, 4, 0, 0);
+        editor.Controls.Add(_currentPrice);
         _enabled.Margin = new Padding(0, 14, 0, 10);
         editor.Controls.Add(_enabled);
         var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true };
@@ -151,8 +164,10 @@ internal sealed class AlertsForm : AsyncForm
             {
                 var alerts = await _api.GetAlertsAsync(cancellationToken);
                 if (!IsCurrentSession) return;
+                _prices.Clear();
                 BindAlerts(alerts, preferredId);
-                SetStatus(alerts.Count == 0 ? "Nenhum alerta cadastrado." : $"{alerts.Count} alerta(s) cadastrado(s).");
+                SetStatus(Summary(), summary: true);
+                LoadPrices(alerts.Select(alert => alert.Ativo.Id));
             }
             finally
             {
@@ -169,12 +184,15 @@ internal sealed class AlertsForm : AsyncForm
             _grid.Rows.Clear();
             foreach (var alert in alerts.OrderBy(alert => alert.Ativo.Ticker).ThenBy(alert => alert.CriadoEm))
             {
-                var index = _grid.Rows.Add(alert.Ativo.Ticker, ConditionLabel(alert.TipoCondicao), alert.ValorAlvo, StateLabel(alert));
-                var added = _grid.Rows[index];
+                var added = _grid.Rows[_grid.Rows.Add(alert.Ativo.Ticker, ConditionLabel(alert.TipoCondicao), alert.ValorAlvo)];
+                added.Cells["Estado"].Value = StateLabel(alert);
                 added.SetFormat(GridCells.Money(alert.MoedaAlvo), "Preço-alvo");
+                // A cotação vem na moeda do ativo, que pode ser diferente da moeda do alvo.
+                added.SetFormat(GridCells.Money(alert.Ativo.Moeda), "Preço atual");
                 // Sem disparo, a célula fica vazia e a grade exibe "—".
                 if (alert.DisparadoEm is { } fired) added.Cells["Último disparo"].Value = fired.LocalDateTime;
                 added.Tag = alert;
+                ShowPrice(added);
             }
 
             var row = preferredId is null
@@ -202,6 +220,7 @@ internal sealed class AlertsForm : AsyncForm
         _enabled.Checked = alert.Habilitado;
         _enabled.Enabled = true;
         _saveButton.Text = "&Salvar alterações";
+        ShowCurrentPrice();
         UpdateActions();
     }
 
@@ -218,6 +237,7 @@ internal sealed class AlertsForm : AsyncForm
         _enabled.Checked = true;
         _enabled.Enabled = false;
         _saveButton.Text = "&Criar alerta";
+        ShowCurrentPrice();
         UpdateActions();
         if (Visible) _ticker.Focus();
     }
@@ -262,6 +282,8 @@ internal sealed class AlertsForm : AsyncForm
                         .Where(alert => alert.Id != saved.Id).Append(saved).ToArray();
                     BindAlerts(alerts, saved.Id);
                     SetStatus($"Alerta de {saved.Ativo.Ticker} salvo.");
+                    // O alerta já está salvo: a cotação do ativo novo é só um complemento da linha.
+                    if (!_prices.ContainsKey(saved.Ativo.Id)) LoadPrices([saved.Ativo.Id]);
                 }
             }
             finally
@@ -297,6 +319,63 @@ internal sealed class AlertsForm : AsyncForm
                 if (IsCurrentSession) SetBusy(false);
             }
         }, HandleError);
+    }
+
+    // Uma cotação por ativo, não por alerta, como no cliente web. A falha de uma delas só deixa aquele preço em branco.
+    private void LoadPrices(IEnumerable<Guid> assetIds)
+    {
+        var ids = assetIds.Distinct().ToArray();
+        if (ids.Length == 0 || !IsCurrentSession) return;
+        Run(async cancellationToken =>
+        {
+            var prices = await Task.WhenAll(ids.Select(id => PriceAsync(id, cancellationToken)));
+            if (!IsCurrentSession) return;
+            for (var i = 0; i < ids.Length; i++)
+            {
+                if (prices[i] is { } price) _prices[ids[i]] = price;
+                else _prices.Remove(ids[i]);
+            }
+            foreach (DataGridViewRow row in _grid.Rows) ShowPrice(row);
+            ShowCurrentPrice();
+            // O resumo só é refeito se ainda for ele que está na tela, sem apagar o resultado de uma ação.
+            if (_summaryShown) SetStatus(Summary(), summary: true);
+        }, HandleError);
+    }
+
+    private async Task<decimal?> PriceAsync(Guid assetId, CancellationToken cancellationToken) =>
+        (await _api.GetQuoteAsync(assetId, cancellationToken).OrNullAsync(cancellationToken))?.Preco;
+
+    private void ShowPrice(DataGridViewRow row)
+    {
+        var alert = (AlertResponse)row.Tag!;
+        var price = ComparablePrice(alert);
+        row.Cells["Preço atual"].Value = _prices.TryGetValue(alert.Ativo.Id, out var current) ? current : null;
+        row.Cells["Distância"].Value = price is > 0 ? (alert.ValorAlvo / price.Value - 1) * 100 : null;
+    }
+
+    private void ShowCurrentPrice()
+    {
+        var alert = EditingAlert;
+        _currentPrice.Text = alert is not null && _prices.TryGetValue(alert.Ativo.Id, out var price)
+            ? $"Preço atual de {alert.Ativo.Ticker}: {price.ToString(GridCells.Money(alert.Ativo.Moeda), CultureInfo.CurrentCulture)}"
+            : "";
+    }
+
+    // O preço atual só é comparado com o alvo quando os dois estão na mesma moeda.
+    private decimal? ComparablePrice(AlertResponse alert) =>
+        string.Equals(alert.MoedaAlvo, alert.Ativo.Moeda, StringComparison.OrdinalIgnoreCase) &&
+        _prices.TryGetValue(alert.Ativo.Id, out var price)
+            ? price
+            : null;
+
+    private string Summary()
+    {
+        var alerts = _grid.Rows.Cast<DataGridViewRow>().Select(row => (AlertResponse)row.Tag!).ToArray();
+        if (alerts.Length == 0) return "Nenhum alerta cadastrado.";
+        var summary = $"{alerts.Length} alerta(s) cadastrado(s) · {alerts.Count(alert => alert.Habilitado)} habilitado(s)";
+        var met = alerts.Count(alert => alert.Habilitado && ComparablePrice(alert) is { } price &&
+                                        (alert.TipoCondicao == InsightFlowApiClient.PriceGreaterThanOrEqual ? price >= alert.ValorAlvo : price <= alert.ValorAlvo));
+        return _prices.Count == 0 ? summary + "." : $"{summary} · {met} com a condição satisfeita no preço atual.";
     }
 
     private void SetBusy(bool busy)
@@ -344,16 +423,17 @@ internal sealed class AlertsForm : AsyncForm
         }
     }
 
-    private void SetStatus(string text, bool error = false)
+    private void SetStatus(string text, bool error = false, bool summary = false)
     {
+        _summaryShown = summary;
         _status.Text = text;
         _status.ForeColor = error ? UiTheme.Error : UiTheme.InkMuted;
     }
 
     private static string ConditionLabel(string condition) => condition switch
     {
-        InsightFlowApiClient.PriceGreaterThanOrEqual => "Preço ≥ alvo",
-        InsightFlowApiClient.PriceLessThanOrEqual => "Preço ≤ alvo",
+        InsightFlowApiClient.PriceGreaterThanOrEqual => "≥ alvo",
+        InsightFlowApiClient.PriceLessThanOrEqual => "≤ alvo",
         _ => condition
     };
 

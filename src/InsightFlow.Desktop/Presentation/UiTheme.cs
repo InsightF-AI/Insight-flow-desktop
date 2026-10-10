@@ -19,10 +19,7 @@ internal static class UiTheme
     public static readonly Color Up = Color.FromArgb(34, 197, 138);
     public static readonly Color Down = Color.FromArgb(251, 84, 104);
 
-    // Aliases mantidos para a lógica de apresentação existente.
-    public static readonly Color Navy = Ink;
-    public static readonly Color Blue = Accent;
-    public static readonly Color Muted = InkMuted;
+    // Mensagens de erro usam o mesmo vermelho das variações negativas.
     public static readonly Color Error = Down;
 
     public static Font Font(float size = 10, bool bold = false) =>

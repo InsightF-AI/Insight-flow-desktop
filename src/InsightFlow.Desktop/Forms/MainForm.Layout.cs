@@ -273,12 +273,16 @@ internal sealed partial class MainForm
         watchHeading.Controls.Add(UiTheme.Label("Watchlist", 13, true), 0, 0);
         watchHeading.Controls.Add(_refreshWatch, 1, 0);
         panel.Controls.Add(watchHeading, 0, 4);
-        var hint = UiTheme.Label("Ativos acompanhados pela sua conta", 8.5f);
+        var hint = UiTheme.Label("Preço, variação do dia e sinais vigentes de cada ativo", 8.5f);
         hint.ForeColor = UiTheme.InkMuted;
         panel.Controls.Add(hint, 0, 5);
         _watchGrid.AccessibleName = "Ativos na sua watchlist";
-        _watchGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Ticker", HeaderText = "ATIVO", FillWeight = 32 });
-        _watchGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Nome", HeaderText = "NOME", FillWeight = 68 });
+        _watchGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Ticker", HeaderText = "ATIVO", FillWeight = 56 });
+        _watchGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Nome", HeaderText = "NOME", FillWeight = 70 });
+        // A moeda varia por ativo: o formato do preço é definido em cada linha.
+        _watchGrid.Columns.Add(GridCells.Column("Preço", 112f, typeof(decimal), alignRight: true));
+        _watchGrid.Columns.Add(GridCells.Column("Var. dia", 74f, typeof(decimal), GridCells.SignedPercent, true));
+        _watchGrid.Columns.Add(GridCells.Column("Sinais", 64f, typeof(int), alignRight: true));
         panel.Controls.Add(_watchGrid, 0, 6);
         _watchStatus.Dock = DockStyle.Fill;
         panel.Controls.Add(_watchStatus, 0, 7);
@@ -405,7 +409,7 @@ internal sealed partial class MainForm
         historyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         historyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         historyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        historyHeader.Controls.Add(SectionTitle("HISTÓRICO", "Fechamento e volume por registro"), 0, 0);
+        historyHeader.Controls.Add(SectionTitle("HISTÓRICO", "Preço, volume e indicadores do histórico recebido"), 0, 0);
         _period.AccessibleName = "Período do histórico";
         _period.Margin = new Padding(0, 5, 10, 0);
         _period.DisplayMember = nameof(HistoryPeriod.Label);
@@ -440,12 +444,32 @@ internal sealed partial class MainForm
         var chartPage = new TabPage("Gráfico") { BackColor = UiTheme.Surface };
         var tablePage = new TabPage("Tabela OHLCV") { BackColor = UiTheme.Surface };
         chartPage.Controls.Add(_historyChart);
+        chartPage.Controls.Add(BuildChartOptions());
         tablePage.Controls.Add(_history);
         views.TabPages.AddRange([chartPage, tablePage]);
         panel.Controls.Add(views, 0, 1);
         _historyStatus.Dock = DockStyle.Fill;
         panel.Controls.Add(_historyStatus, 0, 2);
         return panel;
+    }
+
+    // O texto de cada opção tem a cor da série no gráfico e serve de legenda.
+    private Control BuildChartOptions()
+    {
+        var options = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, BackColor = UiTheme.Surface, Padding = new Padding(4, 2, 0, 0) };
+        CheckBox Option(string text, Color color, bool initial, Action<bool> apply)
+        {
+            var option = new CheckBox { Text = text, Checked = initial, AutoSize = true, ForeColor = color, BackColor = Color.Transparent, Font = UiTheme.Font(8.5f), Margin = new Padding(0, 0, 14, 0) };
+            option.CheckedChanged += (_, _) => apply(option.Checked);
+            return option;
+        }
+        options.Controls.Add(Option("&Candles", UiTheme.InkSecondary, _historyChart.Candles, value => _historyChart.Candles = value));
+        options.Controls.Add(Option("SMA &20", PriceHistoryChart.Sma20Color, _historyChart.ShowSma20, value => _historyChart.ShowSma20 = value));
+        options.Controls.Add(Option("SMA &50", PriceHistoryChart.Sma50Color, _historyChart.ShowSma50, value => _historyChart.ShowSma50 = value));
+        options.Controls.Add(Option("B&ollinger", PriceHistoryChart.BollingerColor, _historyChart.ShowBollinger, value => _historyChart.ShowBollinger = value));
+        // O RSI ocupa o painel inferior, no lugar do volume.
+        options.Controls.Add(Option("RS&I (14)", PriceHistoryChart.RsiColor, _historyChart.ShowRsi, value => _historyChart.ShowRsi = value));
+        return options;
     }
 
     private Control BuildIndicatorCard()

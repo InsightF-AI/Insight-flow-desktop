@@ -1,6 +1,6 @@
 namespace InsightFlow.Desktop.Presentation;
 
-// All form operations are observed and drained while the message loop still runs.
+// Toda operação da tela é observada e aguardada enquanto o laço de mensagens ainda está rodando.
 internal sealed class FormWorkScope : IDisposable
 {
     private readonly CancellationTokenSource _lifetime = new();

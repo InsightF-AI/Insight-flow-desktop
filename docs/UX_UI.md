@@ -1,6 +1,8 @@
-# Diretrizes de UX/UI do desktop
+| Navegação para Portfólio, Alertas e Chat IA | Cada item abre o seu módulo integrado: Portfólio, Alertas, Notificações e Chat IA |
+| Regra de alerta com valor atual e barra de progresso até o alvo | Colunas "Preço atual" e "Distância" na tabela de alertas |
+| Resumo diário por IA no dashboard | Aba "Resumo diário" do Portfólio, em destaque violeta e com o aviso legal || Dashboard com watchlist, cotação e sinais por ativo | Watchlist com preço, variação do dia e sinais vigentes; cotação e OHLCV do ativo selecionado; cards sem dados reais não são exibidos |# Diretrizes de UX/UI do desktop
 
-Referência visual: repositório [`InsightF-AI/Insight-flow-web`](https://github.com/InsightF-AI/Insight-flow-web), commit observado `058b8ed`, em 16/09/2026. O cliente web declara que seus dados são mockados; ele foi usado como referência de interface e fluxo, não como fonte de dados ou contrato de integração.
+Referência visual: repositório [`InsightF-AI/Insight-flow-web`](https://github.com/InsightF-AI/Insight-flow-web), commit observado `058b8ed`, em 16/09/2026. O cliente web declara que seus dados são mockados; ele foi usado como referência de interface e fluxo, não como fonte de dados ou contrato de integração. Em 09/10/2026 o web já consumia a API real (commit `42f9176`) e foi relido como referência de fluxo; a identidade visual não mudou.
 
 ## Identidade adotada
 
@@ -23,7 +25,7 @@ O tema escuro é a base inicial. O web também oferece tema claro; essa alternâ
 | Busca global na topbar | Busca por ticker/nome usando o endpoint documentado |
 | Dashboard com vários cards e dados mockados | Watchlist, cotação e OHLCV reais; cards sem dados reais não são exibidos |
 | Card de ativo com preço e variação | Resumo compacto do ativo selecionado: ativo à esquerda, preço e variação à direita, e mínima, máxima e volume abaixo |
-| Gráfico e períodos rápidos | Período selecionável, gráfico de fechamento/volume e tabela OHLCV; desenho nativo do Windows Forms |
+| Gráfico e períodos rápidos | Período selecionável, gráfico de linha ou candles com SMA 20/50, Bollinger, volume ou RSI e zoom, e tabela OHLCV; desenho nativo do Windows Forms |
 | Feedback de queries e mutations | Mensagens de carregamento, vazio, erro e confirmação junto ao componente afetado |
 | Navegação para Portfólio, Alertas e Chat IA | Cada item abre o seu módulo integrado: Portfólio, Alertas, Notificações e Chat IA |
 
@@ -51,7 +53,6 @@ O tema escuro é a base inicial. O web também oferece tema claro; essa alternâ
 ## Pendências visuais
 
 - incorporar o ícone oficial quando o uso e o formato do ativo forem confirmados para o executável;
-- avaliar biblioteca para candles, zoom e sobreposição de séries; fechamento e volume já têm visualização nativa;
 - definir comportamento da sidebar recolhível no desktop;
 - validar tema claro e persistência da preferência;
 - validar a interface em 150% e 200% de escala do Windows (125% conferido em 01/10/2026) e ao mover a janela entre monitores com escalas diferentes;
