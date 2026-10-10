@@ -12,6 +12,7 @@ internal sealed partial class MainForm : AsyncForm
     // O WebSocket avisa das notificações na hora, mas não reenvia o que chegou com a conexão caída;
     // a consulta periódica cobre essas lacunas e os servidores sem o canal de tempo real.
     private const int NotificationPollMilliseconds = 120_000;
+    private const string LongestPeriod = "5A";
     private readonly HashSet<Guid> _knownNotifications = [];
     private readonly InsightFlowApiClient _api;
     private readonly UserSession _session;
@@ -400,10 +401,16 @@ internal sealed partial class MainForm : AsyncForm
     {
         try
         {
+            // O histórico mais longo dá às médias do gráfico os registros anteriores ao período exibido. Sem ele,
+            // os indicadores usam só o que está na tela. "1D" tem um único ponto e "5A" já é o mais longo.
+            var lookbackRequest = period is "1D" or LongestPeriod
+                ? null
+                : _api.GetHistoryAsync(item.Ativo.Id, LongestPeriod, cancellationToken).OrNullAsync(cancellationToken);
             var points = await _api.GetHistoryAsync(item.Ativo.Id, period, cancellationToken);
+            var lookback = lookbackRequest is null ? null : await lookbackRequest;
             if (!IsCurrentDetail(version, cancellationToken)) return;
             _history.Rows.Clear();
-            _historyChart.SetData(points, item.Ativo.Moeda);
+            _historyChart.SetData(points, item.Ativo.Moeda, lookback);
             foreach (var point in points.OrderByDescending(point => point.Data))
             {
                 var index = _history.Rows.Add(point.Data.DateTime, point.Abertura, point.Maxima, point.Minima, point.Fechamento, point.Volume);

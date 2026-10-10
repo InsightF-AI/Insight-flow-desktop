@@ -37,6 +37,43 @@ public sealed class DesktopUiTests
     });
 
     [Fact]
+    public Task Chart_draws_candles_indicators_and_rsi_and_zooms_around_a_record() => OnUiThread(() =>
+    {
+        using var chart = new PriceHistoryChart { Size = new Size(700, 360), Candles = true, ShowBollinger = true, ShowRsi = true };
+        chart.CreateControl();
+        using var bitmap = new Bitmap(700, 360);
+        chart.SetData(Enumerable.Range(0, 80).Select(i => new HistoryPointResponse
+        {
+            Data = DateTimeOffset.Parse("2026-06-01T03:00:00Z").AddDays(i),
+            Abertura = 30 + i % 7, Fechamento = 31 + i % 5, Minima = 29, Maxima = 38, Volume = 100 + i
+        }), "BRL");
+        chart.DrawToBitmap(bitmap, chart.ClientRectangle);
+
+        // O detalhe do registro traz os indicadores ligados que já têm valor naquela data.
+        Invoke(chart, "OnKeyDown", new KeyEventArgs(Keys.End));
+        foreach (var indicator in new[] { "SMA 20:", "SMA 50:", "Bollinger:", "RSI (14):" }) Assert.Contains(indicator, chart.AccessibleDescription);
+        Invoke(chart, "OnKeyDown", new KeyEventArgs(Keys.Home));
+        Assert.DoesNotContain("SMA 20:", chart.AccessibleDescription);
+
+        // O zoom mantém o registro de referência na tela: aproximar no último deixa a janela no fim da série.
+        chart.Zoom(true, 79);
+        Assert.Equal(60, Field<int>(chart, "_count"));
+        Assert.Equal(20, Field<int>(chart, "_first"));
+        chart.DrawToBitmap(bitmap, chart.ClientRectangle);
+        // Pelo teclado, a janela acompanha o registro escolhido; Esc volta à série inteira.
+        Invoke(chart, "OnKeyDown", new KeyEventArgs(Keys.Home));
+        Assert.Equal(0, Field<int>(chart, "_first"));
+        Invoke(chart, "OnKeyDown", new KeyEventArgs(Keys.Escape));
+        Assert.Equal(0, Field<int>(chart, "_count"));
+
+        chart.Candles = chart.ShowRsi = chart.ShowSma20 = false;
+        chart.DrawToBitmap(bitmap, chart.ClientRectangle);
+        Invoke(chart, "OnKeyDown", new KeyEventArgs(Keys.End));
+        Assert.DoesNotContain("SMA 20:", chart.AccessibleDescription);
+        Assert.Contains("SMA 50:", chart.AccessibleDescription);
+    });
+
+    [Fact]
     public Task Alert_creation_uses_the_write_response_without_a_second_get_or_duplicate_post() => OnUiThread(() =>
     {
         var saved = Alert();
@@ -317,6 +354,9 @@ public sealed class DesktopUiTests
         Assert.Equal("—", rows["BTC"].Cells["Preço"].FormattedValue);
         Assert.Equal("—", rows["BTC"].Cells["Var. dia"].FormattedValue);
         Assert.Equal(0, rows["BTC"].Cells["Sinais"].Value);
+        // O ativo selecionado pede o período exibido e o histórico mais longo, que alimenta as médias do gráfico.
+        Assert.Contains(handler.Requests, request => request.Uri.AbsolutePath.EndsWith("/historico") && request.Uri.Query == "?periodo=1M");
+        Assert.Contains(handler.Requests, request => request.Uri.AbsolutePath.EndsWith("/historico") && request.Uri.Query == "?periodo=5A");
         Assert.NotNull(session.AccessToken);
     });
 

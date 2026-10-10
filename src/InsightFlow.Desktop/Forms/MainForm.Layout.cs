@@ -409,7 +409,7 @@ internal sealed partial class MainForm
         historyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         historyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         historyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        historyHeader.Controls.Add(SectionTitle("HISTÓRICO", "Fechamento e volume por registro"), 0, 0);
+        historyHeader.Controls.Add(SectionTitle("HISTÓRICO", "Preço, volume e indicadores do histórico recebido"), 0, 0);
         _period.AccessibleName = "Período do histórico";
         _period.Margin = new Padding(0, 5, 10, 0);
         _period.DisplayMember = nameof(HistoryPeriod.Label);
@@ -444,12 +444,32 @@ internal sealed partial class MainForm
         var chartPage = new TabPage("Gráfico") { BackColor = UiTheme.Surface };
         var tablePage = new TabPage("Tabela OHLCV") { BackColor = UiTheme.Surface };
         chartPage.Controls.Add(_historyChart);
+        chartPage.Controls.Add(BuildChartOptions());
         tablePage.Controls.Add(_history);
         views.TabPages.AddRange([chartPage, tablePage]);
         panel.Controls.Add(views, 0, 1);
         _historyStatus.Dock = DockStyle.Fill;
         panel.Controls.Add(_historyStatus, 0, 2);
         return panel;
+    }
+
+    // O texto de cada opção tem a cor da série no gráfico e serve de legenda.
+    private Control BuildChartOptions()
+    {
+        var options = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, BackColor = UiTheme.Surface, Padding = new Padding(4, 2, 0, 0) };
+        CheckBox Option(string text, Color color, bool initial, Action<bool> apply)
+        {
+            var option = new CheckBox { Text = text, Checked = initial, AutoSize = true, ForeColor = color, BackColor = Color.Transparent, Font = UiTheme.Font(8.5f), Margin = new Padding(0, 0, 14, 0) };
+            option.CheckedChanged += (_, _) => apply(option.Checked);
+            return option;
+        }
+        options.Controls.Add(Option("&Candles", UiTheme.InkSecondary, _historyChart.Candles, value => _historyChart.Candles = value));
+        options.Controls.Add(Option("SMA &20", PriceHistoryChart.Sma20Color, _historyChart.ShowSma20, value => _historyChart.ShowSma20 = value));
+        options.Controls.Add(Option("SMA &50", PriceHistoryChart.Sma50Color, _historyChart.ShowSma50, value => _historyChart.ShowSma50 = value));
+        options.Controls.Add(Option("B&ollinger", PriceHistoryChart.BollingerColor, _historyChart.ShowBollinger, value => _historyChart.ShowBollinger = value));
+        // O RSI ocupa o painel inferior, no lugar do volume.
+        options.Controls.Add(Option("RS&I (14)", PriceHistoryChart.RsiColor, _historyChart.ShowRsi, value => _historyChart.ShowRsi = value));
+        return options;
     }
 
     private Control BuildIndicatorCard()
