@@ -1,6 +1,4 @@
-| Navegação para Portfólio, Alertas e Chat IA | Cada item abre o seu módulo integrado: Portfólio, Alertas, Notificações e Chat IA |
-| Regra de alerta com valor atual e barra de progresso até o alvo | Colunas "Preço atual" e "Distância" na tabela de alertas |
-| Resumo diário por IA no dashboard | Aba "Resumo diário" do Portfólio, em destaque violeta e com o aviso legal || Dashboard com watchlist, cotação e sinais por ativo | Watchlist com preço, variação do dia e sinais vigentes; cotação e OHLCV do ativo selecionado; cards sem dados reais não são exibidos |# Diretrizes de UX/UI do desktop
+# Diretrizes de UX/UI do desktop
 
 Referência visual: repositório [`InsightF-AI/Insight-flow-web`](https://github.com/InsightF-AI/Insight-flow-web), commit observado `058b8ed`, em 16/09/2026. O cliente web declara que seus dados são mockados; ele foi usado como referência de interface e fluxo, não como fonte de dados ou contrato de integração. Em 09/10/2026 o web já consumia a API real (commit `42f9176`) e foi relido como referência de fluxo; a identidade visual não mudou.
 
@@ -21,13 +19,16 @@ O tema escuro é a base inicial. O web também oferece tema claro; essa alternâ
 | Padrão no exemplar web | Aplicação no desktop atual |
 |---|---|
 | Login dividido entre imagem/mercado e formulário | Painel desenhado localmente com grade e linha de mercado; formulário escuro ao lado |
-| Sidebar agrupada em Principal, Alertas e Ferramentas | Mesmos grupos e ordem; somente Configurações, ainda sem módulo, aparece desabilitado |
+| Sidebar agrupada em Principal, Alertas e Ferramentas | Mesmos grupos e ordem; Configurações abre as preferências locais (segundo plano e inicialização com o Windows) |
 | Busca global na topbar | Busca por ticker/nome usando o endpoint documentado |
-| Dashboard com vários cards e dados mockados | Watchlist, cotação e OHLCV reais; cards sem dados reais não são exibidos |
+| Dashboard com watchlist, cotação e sinais por ativo | Watchlist com preço, variação do dia e sinais vigentes; cotação e OHLCV do ativo selecionado; cards sem dados reais não são exibidos |
 | Card de ativo com preço e variação | Resumo compacto do ativo selecionado: ativo à esquerda, preço e variação à direita, e mínima, máxima e volume abaixo |
 | Gráfico e períodos rápidos | Período selecionável, gráfico de linha ou candles com SMA 20/50, Bollinger, volume ou RSI e zoom, e tabela OHLCV; desenho nativo do Windows Forms |
 | Feedback de queries e mutations | Mensagens de carregamento, vazio, erro e confirmação junto ao componente afetado |
 | Navegação para Portfólio, Alertas e Chat IA | Cada item abre o seu módulo integrado: Portfólio, Alertas, Notificações e Chat IA |
+| Regra de alerta com valor atual e barra de progresso até o alvo | Colunas "Preço atual" e "Distância" na tabela de alertas |
+| Resumo diário por IA no dashboard | Aba "Resumo diário" do Portfólio, em destaque violeta e com o aviso legal |
+| Web push com a aba fechada | Fechar a janela mantém o aplicativo na bandeja do Windows, recebendo pelo WebSocket |
 
 ## Fluxo principal
 
@@ -47,6 +48,9 @@ O tema escuro é a base inicial. O web também oferece tema claro; essa alternâ
 - Sinais usam âmbar/azul para contexto; verde e vermelho ficam reservados a valores positivos/negativos, sem sugerir compra ou venda.
 - A tabela preserva os tipos de data e decimal para permitir ordenação correta; formatação pt-BR ocorre somente na apresentação. As colunas são criadas com `GridCells`, que guarda o valor tipado e aplica o formato (moeda por linha, quando ela varia) no estilo da célula.
 - Toda tela herda de `AsyncForm` e chama `CompleteLayout()` ao fim do construtor. É nesse ponto que a escala de DPI é aplicada aos controles; sem a chamada, o layout da tela permanece suspenso.
+- O `MinimumSize` de cada tela é o menor tamanho em que o layout funciona, em pixels lógicos. Quando ele não cabe na área útil (escala alta ou monitor pequeno), `AsyncForm` mantém o conteúdo nesse tamanho e a janela rola. O painel raiz de cada tela precisa de uma coluna `Percent 100`; sem ela, a coluna cresce com o conteúdo mais largo e a janela menor corta a borda direita.
+- Janelas baixas (menos de 760 pixels lógicos de altura útil) põem a Visão geral em modo compacto: textos de apoio, título da página e rodapé saem, e a lista de resultados da busca só aparece quando tem itens. O que some no modo compacto é sempre apoio; nenhum dado ou ação deixa de estar disponível.
+- Fechar a janela principal leva o aplicativo para a bandeja quando a preferência está ligada; "Sair" encerra a sessão e "Encerrar o InsightFlow", no menu da bandeja, fecha o aplicativo.
 - Cores nunca são o único indicador. Rótulos, sinais e mensagens devem continuar compreensíveis sem distinção cromática.
 - Teclado, foco visível, DPI e redimensionamento da janela fazem parte do aceite de cada tela.
 
@@ -55,5 +59,6 @@ O tema escuro é a base inicial. O web também oferece tema claro; essa alternâ
 - incorporar o ícone oficial quando o uso e o formato do ativo forem confirmados para o executável;
 - definir comportamento da sidebar recolhível no desktop;
 - validar tema claro e persistência da preferência;
-- validar a interface em 150% e 200% de escala do Windows (125% conferido em 01/10/2026) e ao mover a janela entre monitores com escalas diferentes;
-- desenhar a tela de Configurações quando houver preferências a persistir.
+- validar a interface em 200% num monitor que ofereça essa escala (125%, 150% e 175% conferidos em 12/10/2026 num monitor 1920 × 1080) e ao mover a janela entre monitores com escalas diferentes;
+- dar às barras de rolagem a aparência do tema escuro;
+- levar para Configurações as próximas preferências locais (tema claro, quando existir).

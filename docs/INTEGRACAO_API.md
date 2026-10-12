@@ -1,5 +1,16 @@
 # Integração com a API InsightFlow
 
+## Segundo plano na bandeja (12/10/2026)
+
+Mudança só no desktop: o contrato da API é o mesmo da seção de 08/10/2026 (backend `main` em `a8bcb02`) e o backend não foi alterado.
+
+- **Conexão:** fechar a janela principal a oculta em vez de encerrá-la. A conexão `WS /notificacoes/ws`, a renovação do token e a consulta de `/notificacoes?apenas_nao_lidas=true` a cada 2 minutos continuam, e cada notificação nova vira aviso na bandeja. Onde as seções abaixo dizem "enquanto a janela está aberta", leia "enquanto o aplicativo está em execução".
+- **Sessão:** continua só em memória. Com o aplicativo dias na bandeja, o access token é renovado a cada 30 minutos e o refresh token (30 dias) gira a cada renovação. Um refresh recusado encerra a sessão e abre a tela de entrada com o aviso de sessão expirada.
+- **Logout:** `POST /auth/logout` é enviado em "Sair" e em "Encerrar o InsightFlow"; fechar a janela para a bandeja não revoga nada.
+- **Limite:** com o processo encerrado ou antes da entrada não há conexão. O `/dispositivos` (push Expo) e o `/web-push/*` (VAPID) são os canais do mobile e do web; um canal equivalente para o desktop (notificações do Windows) exigiria novo contrato no backend.
+
+Conferido com o backend local: com a janela oculta na bandeja, um alerta de preço disparado pelo ciclo do agendador chegou pelo WebSocket em 5,7 s e gerou o aviso do Windows.
+
 ## Indicadores no gráfico (09/10/2026)
 
 `GET /ativos/{id}/indicadores` devolve só o valor mais recente de cada indicador. Para desenhar a evolução no gráfico, o desktop calcula as séries de SMA 20, SMA 50, Bollinger (20, 2) e RSI (14) sobre os fechamentos do histórico, como o cliente web faz. São médias e desvios de uma lista de preços; sinais, backtest, carteira e textos de IA continuam vindo prontos da API.
