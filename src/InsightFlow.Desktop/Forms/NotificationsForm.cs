@@ -50,7 +50,7 @@ internal sealed class NotificationsForm : AsyncForm
     {
         Text = "InsightFlow — Notificações";
         ClientSize = new Size(1000, 620);
-        MinimumSize = new Size(820, 500);
+        MinimumSize = new Size(860, 500);
         BackColor = UiTheme.Background;
         _onlyUnread.ForeColor = UiTheme.InkSecondary;
         _onlyUnread.BackColor = Color.Transparent;
@@ -86,13 +86,15 @@ internal sealed class NotificationsForm : AsyncForm
         header.Controls.Add(_refreshButton, 2, 0);
         root.Controls.Add(header, 0, 0);
 
-        var split = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, Size = new Size(950, 450), SplitterDistance = 610, Panel1MinSize = 420, Panel2MinSize = 280, BackColor = UiTheme.Border };
+        var split = new SplitContainer { Dock = DockStyle.Fill, FixedPanel = FixedPanel.Panel2, Size = new Size(950, 450), SplitterDistance = 580, Panel1MinSize = 420, Panel2MinSize = 280, BackColor = UiTheme.Border };
         split.Panel1.BackColor = UiTheme.Surface;
         split.Panel1.Padding = new Padding(12);
         split.Panel1.Controls.Add(_grid);
         split.Panel2.BackColor = UiTheme.Surface;
         split.Panel2.Padding = new Padding(18);
         var detail = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, BackColor = UiTheme.Surface };
+        // A coluna tem a largura do painel: o texto e os botões não passam da borda em janelas estreitas.
+        detail.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         detail.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         detail.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         detail.RowStyles.Add(new RowStyle(SizeType.AutoSize));

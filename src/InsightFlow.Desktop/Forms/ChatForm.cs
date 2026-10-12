@@ -63,6 +63,8 @@ internal sealed class ChatForm : AsyncForm
         _input.PlaceholderText = "Escreva sua pergunta (Enter envia, Shift+Enter quebra linha)";
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(22), BackColor = UiTheme.Background };
+        // Sem estilo, a coluna cresce com o conteúdo mais largo e a janela menor corta a borda direita.
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
