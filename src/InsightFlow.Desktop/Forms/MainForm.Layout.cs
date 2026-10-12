@@ -40,6 +40,14 @@ internal sealed partial class MainForm
     private readonly Label _analysisNotice = UiTheme.Label("", 8.5f);
     private readonly Label _analysisStatus = UiTheme.Label("Selecione um ativo para gerar a análise.", 9);
     private readonly NotifyIcon _tray = new() { Icon = AppIcon.Tray, Text = "InsightFlow" };
+    private readonly ContextMenuStrip _trayMenu = new();
+    // Textos e blocos de apoio que saem de cena no modo compacto (janela baixa), para a watchlist e o gráfico caberem.
+    private readonly List<Control> _compactHidden = [];
+    private readonly Panel _searchResultsHost = new() { Dock = DockStyle.Fill, Height = 92, Margin = Padding.Empty };
+    private bool _compact;
+    private TableLayoutPanel _quoteCard = null!;
+    private TableLayoutPanel _historyCard = null!;
+    private Control _quoteInfo = null!;
     private readonly System.Windows.Forms.Timer _notificationTimer = new() { Interval = NotificationPollMilliseconds };
     private Button _notificationsNav = null!;
 
@@ -47,7 +55,8 @@ internal sealed partial class MainForm
     {
         Text = "InsightFlow — Acompanhamento de ativos";
         ClientSize = new Size(1360, 850);
-        MinimumSize = new Size(1120, 740);
+        // Cabe na área útil de um monitor 1080p com 150% de escala (1280 × 672 pixels lógicos).
+        MinimumSize = new Size(1200, 664);
         BackColor = UiTheme.Background;
         UiTheme.StyleInput(_search);
         UiTheme.StyleCombo(_period);
@@ -73,6 +82,38 @@ internal sealed partial class MainForm
         shell.Controls.Add(BuildSidebar(), 0, 0);
         shell.Controls.Add(BuildWorkspace(apiUrl), 1, 0);
         Controls.Add(shell);
+        BuildTrayMenu();
+    }
+
+    // Modo compacto: abaixo desta altura útil, em pixels lógicos, os textos de apoio saem, os cartões perdem margem e
+    // a lista de resultados vazia cede o lugar. É o que acontece com 150% de escala num monitor 1080p.
+    private const int CompactBelowHeight = 760;
+
+    private void ApplyDensity()
+    {
+        if (!IsHandleCreated) return;
+        var compact = ClientSize.Height < LogicalToDeviceUnits(CompactBelowHeight);
+        var showResults = !compact || _searchResults.Items.Count > 0;
+        if (compact == _compact && showResults == _searchResultsHost.Visible) return;
+        _compact = compact;
+        SuspendLayout();
+        foreach (var control in _compactHidden) control.Visible = !compact;
+        // Sem a etiqueta, mínima, máxima, volume e horário usam a largura inteira do cartão e quebram menos linhas.
+        _quoteCard.SetColumnSpan(_quoteInfo, compact ? 2 : 1);
+        _quoteCard.Padding = _historyCard.Padding = new Padding(LogicalToDeviceUnits(compact ? 8 : 14));
+        _searchResultsHost.Visible = showResults;
+        ResumeLayout(true);
+    }
+
+    private void BuildTrayMenu()
+    {
+        var open = new ToolStripMenuItem("Abrir o InsightFlow", null, (_, _) => ShowFromTray());
+        var notifications = new ToolStripMenuItem("Notificações", null, (_, _) => OpenNotificationsFromTray());
+        var exit = new ToolStripMenuItem("Encerrar o InsightFlow", null, (_, _) => Exit());
+        _trayMenu.Items.AddRange([open, notifications, new ToolStripSeparator(), exit]);
+        // Com um módulo aberto por cima, a janela principal não abre outro nem fecha por baixo dele.
+        _trayMenu.Opening += (_, _) => notifications.Enabled = exit.Enabled = !_dialogOpen;
+        _tray.ContextMenuStrip = _trayMenu;
     }
 
     private Control BuildSidebar()
@@ -135,7 +176,15 @@ internal sealed partial class MainForm
         AddNavHeading(nav, "FERRAMENTAS");
         var chatNav = AddNavButton(nav, "  Chat IA");
         chatNav.Click += (_, _) => OpenChat();
-        AddUnavailableNav(nav, "  Configurações");
+        if (_preferences is null || _startup is null)
+        {
+            AddUnavailableNav(nav, "  Configurações");
+        }
+        else
+        {
+            var settingsNav = AddNavButton(nav, "  Configurações");
+            settingsNav.Click += (_, _) => OpenSettings();
+        }
         sidebar.Controls.Add(nav, 0, 1);
 
         var profile = new TableLayoutPanel
@@ -171,14 +220,16 @@ internal sealed partial class MainForm
             Margin = Padding.Empty
         };
         workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        // A barra tem a altura do seu conteúdo: os botões crescem com a escala do Windows.
+        workspace.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         workspace.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        workspace.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        workspace.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         workspace.Controls.Add(BuildTopbar(), 0, 0);
         workspace.Controls.Add(BuildMainContent(), 0, 1);
         var footer = UiTheme.Label($"API configurada: {apiUrl}", 8);
         footer.ForeColor = UiTheme.InkMuted;
         footer.Margin = new Padding(6, 6, 0, 0);
+        _compactHidden.Add(footer);
         workspace.Controls.Add(footer, 0, 2);
         return workspace;
     }
@@ -188,16 +239,17 @@ internal sealed partial class MainForm
         var topbar = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
+            AutoSize = true,
             ColumnCount = 4,
             BackColor = UiTheme.Surface,
-            Padding = new Padding(14, 9, 10, 9),
+            Padding = new Padding(14, 6, 10, 6),
             Margin = new Padding(0, 0, 0, 8)
         };
         topbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         topbar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         topbar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         topbar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        _search.Margin = new Padding(0, 1, 10, 0);
+        _search.Margin = new Padding(0, 1, 10, 1);
         _search.AccessibleName = "Pesquisar ticker ou nome de ativo";
         topbar.Controls.Add(_search, 0, 0);
         topbar.Controls.Add(_searchButton, 1, 0);
@@ -229,6 +281,7 @@ internal sealed partial class MainForm
         subtitle.Anchor = AnchorStyles.Bottom;
         subtitle.Margin = new Padding(12, 4, 0, 10);
         heading.Controls.Add(subtitle);
+        _compactHidden.Add(heading);
         content.Controls.Add(heading, 0, 0);
 
         var split = new SplitContainer
@@ -254,12 +307,13 @@ internal sealed partial class MainForm
         var panel = Card(12);
         panel.RowCount = 10;
         for (var i = 0; i < panel.RowCount; i++) panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        panel.RowStyles[1] = new RowStyle(SizeType.Absolute, 92);
         panel.RowStyles[6] = new RowStyle(SizeType.Percent, 100);
-        panel.Controls.Add(SectionTitle("BUSCA DE ATIVOS", "Selecione um resultado antes de adicionar"), 0, 0);
+        panel.Controls.Add(SectionTitle("BUSCA DE ATIVOS", "Selecione um resultado antes de adicionar", _compactHidden), 0, 0);
         _searchResults.AccessibleName = "Resultados da busca";
         _searchResults.DisplayMember = "Display";
-        panel.Controls.Add(_searchResults, 0, 1);
+        // A linha tem a altura do painel e some com ele quando a lista vazia cede o lugar no modo compacto.
+        _searchResultsHost.Controls.Add(_searchResults);
+        panel.Controls.Add(_searchResultsHost, 0, 1);
         _searchStatus.Dock = DockStyle.Fill;
         _searchStatus.MaximumSize = new Size(550, 0);
         panel.Controls.Add(_searchStatus, 0, 2);
@@ -276,6 +330,7 @@ internal sealed partial class MainForm
         var hint = UiTheme.Label("Preço, variação do dia e sinais vigentes de cada ativo", 8.5f);
         hint.ForeColor = UiTheme.InkMuted;
         panel.Controls.Add(hint, 0, 5);
+        _compactHidden.Add(hint);
         _watchGrid.AccessibleName = "Ativos na sua watchlist";
         _watchGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Ticker", HeaderText = "ATIVO", FillWeight = 56 });
         _watchGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Nome", HeaderText = "NOME", FillWeight = 70 });
@@ -365,6 +420,7 @@ internal sealed partial class MainForm
     {
         // Ativo à esquerda e preço à direita: o cartão fica baixo e o gráfico cabe no tamanho padrão da janela.
         var panel = Card(14);
+        _quoteCard = panel;
         panel.AutoSize = true;
         panel.ColumnCount = 2;
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -389,18 +445,21 @@ internal sealed partial class MainForm
         // O estado da consulta acompanha os dados e passa para a linha de baixo quando a janela é estreita.
         quoteInfo.Controls.Add(_quoteStatus);
         panel.Controls.Add(quoteInfo, 0, 2);
+        _quoteInfo = quoteInfo;
         var pill = UiTheme.Label("COTAÇÃO", 8, true);
         pill.ForeColor = UiTheme.Accent;
         pill.BackColor = Color.FromArgb(13, 32, 56);
         pill.Padding = new Padding(8, 4, 8, 4);
         pill.Anchor = AnchorStyles.Right | AnchorStyles.Top;
         panel.Controls.Add(pill, 1, 2);
+        _compactHidden.Add(pill);
         return panel;
     }
 
     private Control BuildHistoryCard()
     {
         var panel = Card(14);
+        _historyCard = panel;
         panel.RowCount = 3;
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -409,7 +468,7 @@ internal sealed partial class MainForm
         historyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         historyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         historyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        historyHeader.Controls.Add(SectionTitle("HISTÓRICO", "Preço, volume e indicadores do histórico recebido"), 0, 0);
+        historyHeader.Controls.Add(SectionTitle("HISTÓRICO", "Preço, volume e indicadores", _compactHidden), 0, 0);
         _period.AccessibleName = "Período do histórico";
         _period.Margin = new Padding(0, 5, 10, 0);
         _period.DisplayMember = nameof(HistoryPeriod.Label);
@@ -538,7 +597,7 @@ internal sealed partial class MainForm
         return card;
     }
 
-    private static Control SectionTitle(string title, string subtitle)
+    private static Control SectionTitle(string title, string subtitle, ICollection<Control>? compactHidden = null)
     {
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, AutoSize = true, BackColor = Color.Transparent };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -549,6 +608,7 @@ internal sealed partial class MainForm
         subtitleLabel.ForeColor = UiTheme.InkMuted;
         layout.Controls.Add(titleLabel, 0, 0);
         layout.Controls.Add(subtitleLabel, 0, 1);
+        compactHidden?.Add(subtitleLabel);
         return layout;
     }
 

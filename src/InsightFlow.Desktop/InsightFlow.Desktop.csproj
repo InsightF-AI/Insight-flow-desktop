@@ -9,6 +9,11 @@
     <AssemblyName>InsightFlow.Desktop</AssemblyName>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>Assets\insightflow.ico</ApplicationIcon>
+    <!-- A versão também nomeia o instalador (installer/build.ps1). -->
+    <Version>1.0.0</Version>
+    <Product>InsightFlow</Product>
+    <AssemblyTitle>InsightFlow</AssemblyTitle>
+    <Company>InsightF-AI</Company>
   </PropertyGroup>
   <ItemGroup>
     <!-- Fica ao lado do executável mesmo na publicação em arquivo único, para a URL da API poder ser editada. -->

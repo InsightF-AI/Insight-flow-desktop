@@ -120,6 +120,8 @@ internal sealed class AlertsForm : AsyncForm
     private Control BuildEditor()
     {
         var editor = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, RowCount = 11, AutoSize = true, BackColor = UiTheme.Surface };
+        // A coluna tem a largura do painel: os campos não passam da borda e os botões quebram de linha quando falta espaço.
+        editor.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         editor.Controls.Add(UiTheme.Label("DADOS DO ALERTA", 9, true));
         editor.Controls.Add(FieldLabel("Ticker"));
         editor.Controls.Add(_ticker);

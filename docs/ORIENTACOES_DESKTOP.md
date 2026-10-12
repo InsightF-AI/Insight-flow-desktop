@@ -117,6 +117,8 @@ Fora do desenvolvimento local, configurar comunicação HTTPS. Nunca desabilitar
 
 `NotifyIcon` é o componente de bandeja previsto. Ele não define como o servidor entrega eventos nem garante execução com o processo encerrado. Confirmar comportamento de fechar/minimizar, necessidade de execução na bandeja, transporte, deduplicação e entrega após reconexão antes de implementar o fluxo completo.
 
+Atualização de 12/10/2026: fechar a janela principal mantém o aplicativo na bandeja, recebendo pelo WebSocket, com uma instância por usuário do Windows. A preferência e a inicialização com o Windows ficam em Configurações. Com o processo encerrado não há entrega: isso continua dependendo de um canal de push no backend ou de persistir a sessão, que seguiria a regra da seção 6.
+
 CRUD de alertas de preço, sinal técnico e notificação entregue são conceitos diferentes. O cliente não deve assumir que consultar `/alertas` oferece uma fila de eventos. Qualquer polling deve ter contrato e frequência definidos, com cancelamento no logout.
 
 As regras documentais exigem linguagem descritiva sobre condições técnicas e o aviso visível em toda tela ou mensagem com IA:
