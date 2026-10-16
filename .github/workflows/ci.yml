@@ -1,4 +1,4 @@
-name: Desktop
+name: CI
 
 on:
   # Branches de trabalho são validadas pelo pull request; o push direto só roda nas branches de integração.
@@ -15,7 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  verificar:
+    name: Build e testes
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7

@@ -105,7 +105,7 @@ dotnet test InsightFlow.Desktop.sln
 
 Os testes usam xUnit com respostas HTTP controladas e não acessam contas reais. Cobrem os contratos da API (autenticação, sessão e sua renovação, WebSocket de notificações, busca, watchlist, análise técnica, alertas, notificações, portfólio, IA, erros, cancelamento e respostas sem corpo), a configuração da URL, as mensagens de erro, os formatos de apresentação e as telas (ordenação das tabelas, layout e fluxos assíncronos).
 
-O workflow em [.github/workflows/desktop.yml](.github/workflows/desktop.yml) executa build e testes no Windows em cada pull request e nos envios para `main` e `develop`.
+O workflow em [.github/workflows/ci.yml](.github/workflows/ci.yml) executa build e testes no Windows em cada pull request e nos envios para `main` e `develop`.
 
 ## Documentação
 
