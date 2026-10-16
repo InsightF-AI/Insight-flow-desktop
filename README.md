@@ -12,7 +12,7 @@ dotnet build InsightFlow.Desktop.sln
 dotnet run --project src/InsightFlow.Desktop
 ```
 
-A URL padrão do servidor é `http://localhost:8000`. Para outro ambiente, configure a raiz do servidor, sem `/api/v1`:
+A URL padrão do servidor é `https://api-insight.agilesoftware.net.br`, definida em [appsettings.json](src/InsightFlow.Desktop/appsettings.json). Para outro ambiente, configure a raiz do servidor, sem `/api/v1`:
 
 ```powershell
 $env:INSIGHTFLOW_API_URL = 'https://api.exemplo.com'
@@ -155,7 +155,7 @@ dotnet test InsightFlow.Desktop.sln
 
 Os testes usam xUnit com respostas HTTP controladas e não acessam contas reais. Cobrem os contratos da API (autenticação, sessão e sua renovação, WebSocket de notificações, busca, watchlist, análise técnica, alertas, notificações, portfólio, IA, erros, cancelamento e respostas sem corpo), a configuração da URL, as mensagens de erro, os formatos de apresentação, as preferências locais, a instância única e as telas (ordenação das tabelas, layout, modo compacto, rolagem em telas pequenas, segundo plano na bandeja e fluxos assíncronos). Os testes de preferências e de inicialização usam uma pasta temporária e uma chave de teste no registro do usuário, nunca as do aplicativo.
 
-O workflow em [.github/workflows/desktop.yml](.github/workflows/desktop.yml) executa build e testes no Windows em cada pull request e nos envios para `main` e `develop`, e em seguida gera e confere o instalador.
+O workflow em [.github/workflows/ci.yml](.github/workflows/ci.yml) executa build e testes no Windows em cada pull request e nos envios para `main` e `develop`. O instalador e gerado, conferido e publicado como artefato (7 dias) apenas nos envios para a `main`.
 
 ## Documentação
 
