@@ -47,8 +47,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#SourceDir}\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
-; A URL da API pode ter sido editada: uma atualizacao nao sobrescreve o arquivo existente.
-Source: "{#SourceDir}\appsettings.json"; DestDir: "{app}"; Flags: onlyifdoesntexist
+; A URL da API pode ter sido editada: uma atualizacao so troca o arquivo que ainda tem o padrao antigo (ShouldInstallSettings).
+Source: "{#SourceDir}\appsettings.json"; DestDir: "{app}"; Check: ShouldInstallSettings
 
 [Icons]
 Name: "{autoprograms}\InsightFlow"; Filename: "{app}\{#AppExe}"
@@ -62,6 +62,17 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,InsightFlow}"; Flag
 Type: filesandordirs; Name: "{localappdata}\InsightFlow"
 
 [Code]
+function ShouldInstallSettings: Boolean;
+var
+  Path: String;
+  Content: AnsiString;
+begin
+  Path := ExpandConstant('{app}\appsettings.json');
+  // Os primeiros instaladores gravavam o servidor local como padrao; sem edicao, o arquivo passa a usar a API de producao.
+  Result := not FileExists(Path) or
+    (LoadStringFromFile(Path, Content) and (Pos('"http://localhost:8000"', String(Content)) > 0));
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   // A entrada "Abrir o InsightFlow ao iniciar o Windows" e criada pelo aplicativo, em Configuracoes.

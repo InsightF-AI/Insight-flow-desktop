@@ -8,4 +8,4 @@ Fica para depois: automação de interface de verdade (WinAppDriver ou Appium), 
 
 TDD é o ciclo vermelho, verde, refatora: primeiro o teste que falha, depois o código mínimo que o faz passar, e só então a melhoria do desenho.
 
-São **110 testes** em 10 arquivos, em `tests/InsightFlow.Desktop.Tests`. Rodar: `dotnet test InsightFlow.Desktop.sln --configuration Release`.
+São **111 testes** em 10 arquivos, em `tests/InsightFlow.Desktop.Tests`. Rodar: `dotnet test InsightFlow.Desktop.sln --configuration Release`.

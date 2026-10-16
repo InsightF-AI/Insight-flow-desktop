@@ -84,6 +84,16 @@ jobs:
           foreach ($file in 'InsightFlow.Desktop.exe', 'appsettings.json', 'unins000.exe') {
             if (-not (Test-Path (Join-Path $target $file))) { throw "$file não foi instalado." }
           }
+          # Atualização: o padrão antigo (servidor local) é trocado pela API de produção; uma URL editada é mantida.
+          $settings = Join-Path $target 'appsettings.json'
+          $shipped = (Get-Content $settings -Raw | ConvertFrom-Json).Api.BaseUrl
+          foreach ($case in @(@{ Before = 'http://localhost:8000'; After = $shipped }, @{ Before = 'https://api.exemplo.test'; After = 'https://api.exemplo.test' })) {
+            [IO.File]::WriteAllText($settings, "{`"Api`": {`"BaseUrl`": `"$($case.Before)`", `"TimeoutSeconds`": 30}}")
+            $upgrade = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$target`"" -Wait -PassThru
+            if ($upgrade.ExitCode -ne 0) { throw "A atualização falhou (código $($upgrade.ExitCode))." }
+            $actual = (Get-Content $settings -Raw | ConvertFrom-Json).Api.BaseUrl
+            if ($actual -ne $case.After) { throw "Depois da atualização, Api.BaseUrl era $actual; esperado $($case.After)." }
+          }
           $uninstall = Start-Process (Join-Path $target 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw "A desinstalação falhou (código $($uninstall.ExitCode))." }
           # O desinstalador termina o trabalho num segundo processo; o executável some logo depois.
