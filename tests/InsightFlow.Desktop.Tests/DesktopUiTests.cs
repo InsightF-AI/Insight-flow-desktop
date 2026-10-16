@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.Json;
 using InsightFlow.Desktop.Api;
 using InsightFlow.Desktop.Api.Contracts;
+using InsightFlow.Desktop.Configuration;
 using InsightFlow.Desktop.Forms;
 using InsightFlow.Desktop.Presentation;
 using InsightFlow.Desktop.Session;
@@ -71,6 +72,17 @@ public sealed class DesktopUiTests
         Invoke(chart, "OnKeyDown", new KeyEventArgs(Keys.End));
         Assert.DoesNotContain("SMA 20:", chart.AccessibleDescription);
         Assert.Contains("SMA 50:", chart.AccessibleDescription);
+
+        // Sem altura para os dois painéis, o gráfico mostra só o de preço; abaixo disso, pede uma janela maior.
+        var priceArea = typeof(PriceHistoryChart).GetProperty("PriceArea", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        chart.Size = new Size(700, 360);
+        var tall = ((RectangleF)priceArea.GetValue(chart)!).Height;
+        chart.Size = new Size(700, 130);
+        chart.DrawToBitmap(bitmap, chart.ClientRectangle);
+        Assert.Equal(130 - 62, ((RectangleF)priceArea.GetValue(chart)!).Height);
+        Assert.True(tall > 130);
+        chart.Size = new Size(700, 100);
+        chart.DrawToBitmap(bitmap, chart.ClientRectangle);
     });
 
     [Fact]
@@ -163,7 +175,8 @@ public sealed class DesktopUiTests
         Form[] screens =
         [
             new LoginForm(api, session, http.BaseAddress), new MainForm(api, session, http.BaseAddress), new AlertsForm(api, session),
-            new NotificationsForm(api, session, new Dictionary<Guid, string>()), new PortfolioForm(api, session, []), new ChatForm(api, session)
+            new NotificationsForm(api, session, new Dictionary<Guid, string>()), new PortfolioForm(api, session, []), new ChatForm(api, session),
+            new SettingsForm(UserPreferences.Load(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))), TestStartup(out _))
         ];
         foreach (var screen in screens)
         {
@@ -450,12 +463,199 @@ public sealed class DesktopUiTests
         Assert.Contains("test-refresh-token", logout.Body);
     });
 
+    [Fact]
+    public Task Closing_the_main_window_keeps_the_session_in_the_tray_until_exit_is_chosen() => OnUiThread(() =>
+    {
+        var handler = new RecordingHttpMessageHandler((request, _) => Task.FromResult(request.Uri.AbsolutePath == "/api/v1/auth/logout"
+            ? new HttpResponseMessage(HttpStatusCode.NoContent)
+            : RecordingHttpMessageHandler.Json("[]")));
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test") };
+        var session = new UserSession(); session.Start("test-token", "test-refresh-token", DateTimeOffset.UtcNow.AddMinutes(30));
+        var directory = Directory.CreateTempSubdirectory("insightflow-tests");
+        try
+        {
+            var path = Path.Combine(directory.FullName, "preferences.json");
+            // Com o aviso de segundo plano já exibido, o teste não dispara um balão do Windows.
+            File.WriteAllText(path, """{"KeepRunningInTray":true,"BackgroundNoticeShown":true}""");
+            var form = new MainForm(new InsightFlowApiClient(http, session), session, http.BaseAddress, null, UserPreferences.Load(path), TestStartup(out _));
+            ShowOffScreen(form);
+            PumpUntil(() => Field<NotifyIcon>(form, "_tray").Visible && !Work(form).HasPending);
+
+            form.Close();
+            Assert.False(form.Visible);
+            Assert.False(form.IsDisposed);
+            Assert.NotNull(session.RefreshToken);
+            // Na bandeja, a consulta das notificações continua.
+            int Polls() { lock (handler.Requests) return handler.Requests.Count(request => request.Uri.AbsolutePath == "/api/v1/notificacoes"); }
+            var polls = Polls();
+            Invoke(form, "PollNotifications");
+            PumpUntil(() => !Work(form).HasPending);
+            Assert.Equal(polls + 1, Polls());
+            lock (handler.Requests) Assert.DoesNotContain(handler.Requests, request => request.Uri.AbsolutePath == "/api/v1/auth/logout");
+
+            form.ShowFromTray();
+            Assert.True(form.Visible);
+
+            Invoke(form, "Exit");
+            PumpUntil(() => form.IsDisposed && form.Revocation.IsCompleted);
+            Assert.False(form.LogoutRequested);
+            Assert.Null(session.RefreshToken);
+            lock (handler.Requests) Assert.Contains(handler.Requests, request => request.Uri.AbsolutePath == "/api/v1/auth/logout" && request.Body!.Contains("test-refresh-token"));
+        }
+        finally
+        {
+            directory.Delete(true);
+        }
+    });
+
+    [Fact]
+    public Task Without_the_tray_preference_closing_the_main_window_ends_the_app() => OnUiThread(() =>
+    {
+        using var http = new HttpClient(RecordingHttpMessageHandler.ReturningJson("[]")) { BaseAddress = new Uri("https://api.example.test") };
+        var session = new UserSession(); session.Start("test-token");
+        var directory = Directory.CreateTempSubdirectory("insightflow-tests");
+        try
+        {
+            var path = Path.Combine(directory.FullName, "preferences.json");
+            File.WriteAllText(path, """{"KeepRunningInTray":false}""");
+            var form = new MainForm(new InsightFlowApiClient(http, session), session, http.BaseAddress, null, UserPreferences.Load(path), TestStartup(out _));
+            ShowOffScreen(form);
+            PumpUntil(() => Field<NotifyIcon>(form, "_tray").Visible && !Work(form).HasPending);
+
+            form.Close();
+            PumpUntil(() => form.IsDisposed);
+
+            Assert.False(form.LogoutRequested);
+            Assert.Null(session.AccessToken);
+        }
+        finally
+        {
+            directory.Delete(true);
+        }
+    });
+
+    [Fact]
+    public Task Settings_save_the_tray_preference_and_the_windows_startup_entry() => OnUiThread(() =>
+    {
+        var directory = Directory.CreateTempSubdirectory("insightflow-tests");
+        var startup = TestStartup(out var keyPath);
+        try
+        {
+            var path = Path.Combine(directory.FullName, "preferences.json");
+            var preferences = UserPreferences.Load(path);
+            using var form = new SettingsForm(preferences, startup);
+            form.CreateControl();
+            var keepInTray = Field<CheckBox>(form, "_keepInTray");
+            var startWithWindows = Field<CheckBox>(form, "_startWithWindows");
+            var save = Field<Button>(form, "_save");
+            Assert.True(keepInTray.Checked);
+            Assert.False(startWithWindows.Checked);
+            Assert.False(save.Enabled);
+
+            keepInTray.Checked = false;
+            startWithWindows.Checked = true;
+            Assert.True(save.Enabled);
+            Invoke(form, "Save");
+
+            Assert.False(preferences.KeepRunningInTray);
+            Assert.False(UserPreferences.Load(path).KeepRunningInTray);
+            Assert.True(startup.IsEnabled);
+            Assert.False(save.Enabled);
+            Assert.Contains("salvas", Field<Label>(form, "_status").Text);
+
+            startWithWindows.Checked = false;
+            Invoke(form, "Save");
+            Assert.False(startup.IsEnabled);
+        }
+        finally
+        {
+            Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(keyPath, false);
+            directory.Delete(true);
+        }
+    });
+
+    [Fact]
+    public Task A_short_main_window_goes_compact_and_shows_the_search_list_only_when_it_has_results() => OnUiThread(() =>
+    {
+        var handler = new RecordingHttpMessageHandler((request, _) => Task.FromResult(RecordingHttpMessageHandler.Json(
+            request.Uri.AbsolutePath == "/api/v1/ativos/buscar" ? """[{"ticker":"PETR4","nome":"Petrobras","tipo":"ACAO","moeda":"BRL"}]""" : "[]")));
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test") };
+        var session = new UserSession(); session.Start("test-token");
+        using var form = new MainForm(new InsightFlowApiClient(http, session), session, http.BaseAddress);
+        ShowOffScreen(form);
+        PumpUntil(() => Field<NotifyIcon>(form, "_tray").Visible && !Work(form).HasPending);
+
+        // É a altura que sobra com 150% de escala num monitor 1080p.
+        form.Height = form.MinimumSize.Height;
+        var results = Field<Panel>(form, "_searchResultsHost");
+        var hints = Field<List<Control>>(form, "_compactHidden");
+        Assert.True(Field<bool>(form, "_compact"));
+        Assert.False(results.Visible);
+        Assert.All(hints, hint => Assert.False(hint.Visible));
+        // A watchlist e o gráfico ficam com a altura liberada.
+        Assert.True(Field<DataGridView>(form, "_watchGrid").Height >= form.LogicalToDeviceUnits(150));
+        Assert.True(Field<PriceHistoryChart>(form, "_historyChart").Height >= form.LogicalToDeviceUnits(110));
+
+        Field<TextBox>(form, "_search").Text = "PETR";
+        Invoke(form, "Search");
+        PumpUntil(() => !Work(form).HasPending);
+        Assert.True(results.Visible);
+        Assert.Single(Field<ListBox>(form, "_searchResults").Items);
+
+        // Apagar a busca devolve a altura à watchlist.
+        Field<TextBox>(form, "_search").Text = "";
+        Assert.False(results.Visible);
+        Invoke(form, "Exit");
+        PumpUntil(() => form.IsDisposed);
+    });
+
+    [Fact]
+    public Task A_screen_smaller_than_its_designed_minimum_keeps_the_layout_and_scrolls() => OnUiThread(() =>
+    {
+        var startup = TestStartup(out _);
+        using var form = new SettingsForm(UserPreferences.Load(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))), startup);
+        var designed = form.MinimumSize;
+        ShowOffScreen(form);
+        PumpUntil(() => form.Visible);
+        var content = form.Controls[0];
+        var minimum = form.AutoScrollMinSize;
+        Assert.True(form.AutoScroll);
+        Assert.Equal(form.LogicalToDeviceUnits(designed) - (form.Size - form.ClientSize), minimum);
+
+        // No tamanho mínimo projetado não há rolagem: o conteúdo ocupa exatamente a área da janela.
+        form.Size = form.MinimumSize;
+        Assert.Equal(form.ClientSize, content.Size);
+
+        // Tela pequena ou escala alta: a janela encolhe, o conteúdo mantém o mínimo projetado e passa a rolar.
+        form.MinimumSize = new Size(320, 240);
+        form.Size = new Size(320, 240);
+        Assert.Equal(minimum, content.Size);
+        Assert.True(form.ClientSize.Width < minimum.Width && form.ClientSize.Height < minimum.Height);
+    });
+
     private static AlertResponse Alert() => new()
     {
         Id = Guid.NewGuid(), Ativo = new AssetResponse { Id = Guid.NewGuid(), Ticker = "PETR4", Nome = "Petrobras", Tipo = "ACAO", Moeda = "BRL" },
         TipoCondicao = InsightFlowApiClient.PriceGreaterThanOrEqual, ValorAlvo = 1_000_000_001.5m,
         MoedaAlvo = "BRL", Habilitado = true, UltimoEstado = false, CriadoEm = DateTimeOffset.UtcNow, AtualizadoEm = DateTimeOffset.UtcNow
     };
+
+    // Entrada de inicialização numa chave de teste: a chave Run do usuário não é tocada.
+    private static WindowsStartup TestStartup(out string keyPath)
+    {
+        keyPath = $@"Software\InsightFlow.Tests.{Guid.NewGuid():N}";
+        return new WindowsStartup("\"InsightFlow.Desktop.exe\"", keyPath);
+    }
+
+    // Exibe a janela de verdade, fora da área visível: só assim o ícone da bandeja e o fechamento se comportam como no uso.
+    private static void ShowOffScreen(Form form)
+    {
+        form.ShowInTaskbar = false;
+        form.Opacity = 0;
+        form.StartPosition = FormStartPosition.Manual;
+        form.Location = new Point(-4000, -4000);
+        form.Show();
+    }
 
     private static FormWorkScope Work(Form form) =>
         (FormWorkScope)typeof(AsyncForm).GetField("_work", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(form)!;

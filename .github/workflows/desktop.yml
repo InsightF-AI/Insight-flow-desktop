@@ -30,3 +30,52 @@ jobs:
         run: dotnet build InsightFlow.Desktop.sln --configuration Release --no-restore
       - name: Test
         run: dotnet test InsightFlow.Desktop.sln --configuration Release --no-build --no-restore
+
+  installer:
+    needs: build-and-test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          $installed = 'Inno Setup 7', 'Inno Setup 6' | ForEach-Object { Join-Path ${env:ProgramFiles(x86)} "$_\ISCC.exe" } | Where-Object { Test-Path $_ }
+          if (-not $installed) { choco install innosetup --no-progress -y }
+      - name: Build installer
+        shell: pwsh
+        env:
+          # Sem os segredos, o instalador sai sem assinatura. Pull requests nunca recebem o certificado.
+          SIGN_PFX_BASE64: ${{ github.event_name != 'pull_request' && secrets.SIGN_PFX_BASE64 || '' }}
+          INSIGHTFLOW_SIGN_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.SIGN_PFX_PASSWORD || '' }}
+        run: |
+          if ($env:SIGN_PFX_BASE64) {
+            $env:INSIGHTFLOW_SIGN_PFX = Join-Path $env:RUNNER_TEMP 'insightflow-sign.pfx'
+            [IO.File]::WriteAllBytes($env:INSIGHTFLOW_SIGN_PFX, [Convert]::FromBase64String($env:SIGN_PFX_BASE64))
+          }
+          ./installer/build.ps1
+      - name: Install and uninstall silently
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem artifacts/installer/InsightFlow-Setup-*.exe).FullName
+          $target = Join-Path $env:RUNNER_TEMP 'InsightFlow'
+          $install = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$target`"" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "A instalação falhou (código $($install.ExitCode))." }
+          foreach ($file in 'InsightFlow.Desktop.exe', 'appsettings.json', 'unins000.exe') {
+            if (-not (Test-Path (Join-Path $target $file))) { throw "$file não foi instalado." }
+          }
+          $uninstall = Start-Process (Join-Path $target 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "A desinstalação falhou (código $($uninstall.ExitCode))." }
+          # O desinstalador termina o trabalho num segundo processo; o executável some logo depois.
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path (Join-Path $target 'InsightFlow.Desktop.exe')) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
+          if (Test-Path (Join-Path $target 'InsightFlow.Desktop.exe')) { throw 'A desinstalação não removeu o executável.' }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: InsightFlow-Setup
+          path: artifacts/installer/InsightFlow-Setup-*.exe
+          if-no-files-found: error

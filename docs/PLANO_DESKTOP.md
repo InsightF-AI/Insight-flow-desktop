@@ -222,3 +222,34 @@ O card pede gráficos de preço e indicadores fáceis de ler, e a regra do aviso
 Evidência: compilação sem avisos, 97 testes aprovados (eram 94) e capturas do gráfico em 125% com dados reais (linha, candles com Bollinger e RSI, e zoom).
 
 Continuam fora do alcance do desktop sozinho: notificações com o aplicativo fechado (não há canal de push), assinatura do executável (exige certificado) e a validação em 150% e 200% (a máquina de desenvolvimento usa 125%).
+
+## Pendências do status da issue #10 (12/10/2026)
+
+O status enviado à equipe listava três pendências do desktop: notificações com o aplicativo fechado, instalador e assinatura, e validação em 150% e 200% de escala. O backend e o web não foram alterados; o contrato da API é o mesmo de 08/10/2026 (backend `main` em `a8bcb02`).
+
+- **Segundo plano (marco 5):** fechar a janela principal deixa o aplicativo na bandeja, com a sessão, o WebSocket e a consulta periódica ativos. O ícone ganhou menu (Abrir, Notificações, Encerrar) e duplo clique que abre a janela. O aplicativo passou a ter uma instância por usuário do Windows: abrir de novo traz a janela que já está rodando. "Encerrar o InsightFlow" e o logoff do Windows fecham de verdade e revogam o login, como antes fazia o fechamento da janela.
+- **Configurações:** o item da barra lateral deixou de ser um espaço reservado. A tela guarda duas preferências por usuário do Windows: continuar em segundo plano ao fechar a janela (ligada por padrão) e abrir o InsightFlow ao iniciar o Windows (desligada por padrão). As preferências ficam em `%LOCALAPPDATA%\InsightFlow\preferences.json`; não há tokens nem senhas gravados.
+- **Instalador (marco 7):** `installer/build.ps1` publica o executável único e compila `installer/InsightFlow.iss` com o Inno Setup. A instalação é por usuário, sem administrador, preserva o `appsettings.json` numa atualização e a desinstalação remove preferências e a entrada de inicialização. O projeto passou a declarar a versão (`1.0.0`), que nomeia o instalador.
+- **Assinatura (marco 7):** `installer/sign.ps1` assina executável, desinstalador e instalador com um `.pfx` indicado por variável de ambiente; o workflow faz o mesmo quando os segredos `SIGN_PFX_BASE64` e `SIGN_PFX_PASSWORD` existem. O projeto ainda não tem certificado, então os binários continuam saindo sem assinatura.
+- **Escala do Windows:** a validação encontrou defeitos, corrigidos nesta entrega:
+  - na área útil de 150% num monitor 1080p (1280 × 672 pixels lógicos), a Visão geral escondia as linhas da watchlist e trocava o gráfico por "Amplie a janela". A tela ganhou um modo compacto para janelas baixas e o tamanho mínimo passou de 1120 × 740 para 1200 × 664, que cabe nessa área;
+  - o gráfico mostra só o painel de preço quando não há altura para os dois painéis, em vez do aviso;
+  - quando nem o tamanho mínimo projetado cabe na área útil (175% nesse monitor), todas as telas mantêm o layout e a janela rola, em vez de espremer e sobrepor os controles;
+  - Portfólio e Chat cortavam a borda direita no tamanho mínimo; Alertas e Notificações cortavam campos e botões do painel da direita em 175%; a barra de busca da Visão geral perdia a borda inferior acima de 100%.
+
+Evidência:
+
+- compilação sem avisos e 110 testes aprovados (eram 97), incluindo preferências, inicialização com o Windows, instância única, fechamento para a bandeja, modo compacto e rolagem;
+- no aplicativo real contra o backend local: a segunda abertura encerra sozinha, fechar a janela mantém o processo sem janela visível, abrir de novo traz a janela de volta, "Sair" volta ao login e fechar o login encerra o aplicativo;
+- com a janela fechada para a bandeja, um alerta de preço disparado pelo ciclo do agendador do backend chegou em 5,7 s pelo WebSocket, atualizou o contador ("Notificações (5)") e o Windows exibiu o balão, com a janela ainda oculta;
+- capturas das sete telas em 125%, 150% e 175% reais, no tamanho padrão e no mínimo, num monitor 1920 × 1080, com a escala trocada sem novo logon e o processo iniciado depois da troca (DPI do sistema igual ao da janela): nenhum controle cortado. Em 150% nenhuma tela rola; em 175% rolam Entrar, Portfólio e Visão geral;
+- instalador de 44,7 MB compilado nesta máquina com o Inno Setup 6.7.3, sem assinatura e também com um certificado de teste autoassinado (executável e instalador assinados; certificado não confiável, como esperado).
+
+Não validado:
+
+- 200% real: o Windows oferece no máximo 175% em monitores 1920 × 1080. A área útil equivalente (960 × 492) foi simulada em 125%, com rolagem em todas as telas, menos o Chat, que cabe;
+- mover a janela entre monitores de escalas diferentes;
+- a execução do instalador nesta máquina: o Smart App Control bloqueia executáveis sem assinatura confiável. O job `installer` do workflow instala e desinstala em modo silencioso, e roda a partir do primeiro envio desta entrega ao GitHub;
+- o carimbo de tempo da assinatura (o teste local assinou sem ele) e a assinatura com um certificado confiável.
+
+Continuam fora do alcance do desktop sozinho: receber com o processo encerrado ou antes da entrada (exige um canal de push do Windows no backend, ou guardar a sessão no computador, o que muda a decisão de manter tokens só em memória) e o certificado de assinatura de código (tem custo e exige validação de identidade).

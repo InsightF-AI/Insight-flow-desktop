@@ -88,15 +88,21 @@ internal sealed class PriceHistoryChart : Control
     private float DpiScale => DeviceDpi / 96f;
     private int VisibleCount => _count == 0 ? _series.Points.Count : Math.Min(_count, _series.Points.Count);
 
+    // Sem altura para os dois painéis, o gráfico mostra só o de preço; abaixo de MinimumHeight, pede uma janela maior.
+    private const int TwoPanelHeight = 160;
+    private const int MinimumHeight = 110;
+    private bool PriceOnly => ClientSize.Height < TwoPanelHeight * DpiScale;
+
     private RectangleF PriceArea => new(96 * DpiScale, 32 * DpiScale,
-        Math.Max(1, ClientSize.Width - 112 * DpiScale), Math.Max(1, (ClientSize.Height - 85 * DpiScale) * 0.7f));
+        Math.Max(1, ClientSize.Width - 112 * DpiScale),
+        Math.Max(1, PriceOnly ? ClientSize.Height - 62 * DpiScale : (ClientSize.Height - 85 * DpiScale) * 0.7f));
 
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
         var g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        if (_series.Points.Count == 0 || ClientSize.Width < 200 * DpiScale || ClientSize.Height < 160 * DpiScale)
+        if (_series.Points.Count == 0 || ClientSize.Width < 200 * DpiScale || ClientSize.Height < MinimumHeight * DpiScale)
         {
             TextRenderer.DrawText(g, _series.Points.Count == 0 ? _message : "Amplie a janela para visualizar o gráfico.",
                 Font, ClientRectangle, ForeColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
@@ -121,11 +127,13 @@ internal sealed class PriceHistoryChart : Control
             g.DrawString(zoom, Font, mutedBrush, plot.Right - g.MeasureString(zoom, Font).Width, 4 * DpiScale);
         }
 
-        for (var tick = 0; tick <= 4; tick++)
+        // Num painel baixo, cinco rótulos de preço se sobreporiam.
+        var ticks = plot.Height < 70 * DpiScale ? 2 : 4;
+        for (var tick = 0; tick <= ticks; tick++)
         {
-            var y = plot.Top + plot.Height * tick / 4;
+            var y = plot.Top + plot.Height * tick / ticks;
             g.DrawLine(gridPen, plot.Left, y, plot.Right, y);
-            var label = AxisNumber(maximum - (maximum - minimum) * tick / 4, (maximum - minimum) / 4);
+            var label = AxisNumber(maximum - (maximum - minimum) * tick / ticks, (maximum - minimum) / ticks);
             var size = g.MeasureString(label, Font);
             g.DrawString(label, Font, textBrush, plot.Left - size.Width - 6 * DpiScale, y - size.Height / 2);
         }
@@ -150,9 +158,12 @@ internal sealed class PriceHistoryChart : Control
             DrawSeries(g, pen, _series.Sma20, plot, Y);
         }
 
-        if (_rsi) DrawRsi(g, plot, lowerTop, lowerBottom, gridPen, textBrush);
-        else DrawVolume(g, plot, lowerTop, lowerBottom, barWidth, textBrush);
-        g.DrawLine(gridPen, plot.Left, lowerBottom, plot.Right, lowerBottom);
+        if (!PriceOnly)
+        {
+            if (_rsi) DrawRsi(g, plot, lowerTop, lowerBottom, gridPen, textBrush);
+            else DrawVolume(g, plot, lowerTop, lowerBottom, barWidth, textBrush);
+            g.DrawLine(gridPen, plot.Left, lowerBottom, plot.Right, lowerBottom);
+        }
 
         var start = _series.Points[_first].Data;
         var end = _series.Points[last].Data;

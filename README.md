@@ -33,7 +33,7 @@ A variável de ambiente tem precedência sobre [appsettings.json](src/InsightFlo
 
 `Api.TimeoutSeconds` (30 por padrão, de 1 a 300) é o prazo de cada chamada comum. A análise por IA e o chat esperam 70 s e 90 s, ou o valor configurado, se for maior: o provedor de IA do servidor pode levar perto de um minuto.
 
-Senhas são enviadas apenas no cadastro/login. O access token (30 minutos) e o refresh token ficam em memória, são renovados automaticamente durante o uso e, ao sair, são apagados e revogados no servidor. O aplicativo não inclui credenciais de demonstração nem inicia o backend automaticamente.
+Senhas são enviadas apenas no cadastro/login. O access token (30 minutos) e o refresh token ficam em memória, são renovados automaticamente durante o uso e, ao sair da conta ou encerrar o aplicativo, são apagados e revogados no servidor. Fechar a janela não encerra a sessão quando o aplicativo continua na bandeja. O aplicativo não inclui credenciais de demonstração nem inicia o backend automaticamente.
 
 ## Distribuir
 
@@ -49,7 +49,36 @@ Para gerar um único `.exe` que não depende do runtime instalado (cerca de 50 M
 dotnet publish src/InsightFlow.Desktop -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o publish
 ```
 
-O ícone do executável, das janelas e da bandeja é [Assets/insightflow.ico](src/InsightFlow.Desktop/Assets/insightflow.ico), feito a partir do avatar da organização no GitHub. O executável gerado não é assinado; instalador e assinatura continuam pendentes.
+O ícone do executável, das janelas e da bandeja é [Assets/insightflow.ico](src/InsightFlow.Desktop/Assets/insightflow.ico), feito a partir do avatar da organização no GitHub.
+
+### Instalador
+
+O instalador é gerado com o [Inno Setup](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`) a partir de [installer/InsightFlow.iss](installer/InsightFlow.iss):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\build.ps1
+```
+
+O script publica o executável único, compila o instalador e grava `artifacts/installer/InsightFlow-Setup-<versão>.exe` (cerca de 45 MB). A versão vem de `Version` no `.csproj`. O instalador:
+
+- instala por usuário, sem administrador, em `%LOCALAPPDATA%\Programs\InsightFlow`, com atalho no menu Iniciar e, se marcado, na área de trabalho;
+- preserva o `appsettings.json` já existente numa atualização, para não perder a URL da API configurada;
+- pede para encerrar o aplicativo se ele estiver aberto, inclusive na bandeja;
+- na desinstalação, remove as preferências locais e a entrada de inicialização com o Windows.
+
+O job `installer` do workflow gera o mesmo instalador em cada execução, instala e desinstala em modo silencioso para conferi-lo, e o publica como artefato `InsightFlow-Setup`.
+
+### Assinatura
+
+A assinatura é opcional e depende de um certificado de assinatura de código (`.pfx`), que o projeto ainda não tem. Com o certificado, o mesmo script assina o executável, o desinstalador e o instalador (Authenticode, SHA-256, com carimbo de tempo):
+
+```powershell
+$env:INSIGHTFLOW_SIGN_PFX = 'C:\caminho\certificado.pfx'
+$env:INSIGHTFLOW_SIGN_PASSWORD = '<senha do .pfx>'
+powershell -ExecutionPolicy Bypass -File installer\build.ps1
+```
+
+No GitHub Actions, os segredos `SIGN_PFX_BASE64` (o `.pfx` em Base64) e `SIGN_PFX_PASSWORD` ligam a assinatura nos envios para `main` e `develop`; pull requests nunca recebem o certificado. Sem eles, o instalador sai sem assinatura: o SmartScreen avisa na primeira execução e o Smart App Control, quando ligado, bloqueia. Um certificado autoassinado serve para testar o fluxo, mas não remove esses avisos em outras máquinas. O `.pfx` não deve ser versionado (`*.pfx` está no `.gitignore`).
 
 ## Funcionalidades
 
@@ -59,15 +88,34 @@ O ícone do executável, das janelas e da bandeja é [Assets/insightflow.ico](sr
 4. Selecionar um sinal para consultar ocorrências e retornos do backtest, preservando resultados indisponíveis.
 5. Criar, listar, editar, habilitar/desabilitar e excluir alertas de preço, com o preço atual e a distância até o alvo.
 6. Alterar a preferência de notificação da watchlist, remover um item ou encerrar a sessão.
-7. Consultar notificações (sinais, alertas disparados e resumo diário), marcar uma ou todas como lidas e receber avisos na bandeja do Windows, em tempo real pelo WebSocket da API, enquanto o app está aberto.
+7. Consultar notificações (sinais, alertas disparados e resumo diário), marcar uma ou todas como lidas e receber avisos na bandeja do Windows, em tempo real pelo WebSocket da API, com a janela aberta ou fechada (veja [Segundo plano](#segundo-plano)).
 8. Registrar operações simuladas, com a cotação do ativo como preço unitário sugerido e o valor total, e acompanhar posições com variação do dia, rentabilidade, comparação com CDI e Ibovespa, distribuição da carteira e o resumo diário gerado pelo servidor.
 9. Gerar a análise por IA de um ativo e conversar com o Chat IA.
+10. Em Configurações, escolher se o aplicativo continua na bandeja ao fechar a janela e se abre ao iniciar o Windows.
 
 Toda tela que exibe texto de IA (análise, chat e resumo diário) mostra o aviso "Análise gerada por IA. Não constitui recomendação de investimento.": o texto enviado pela API quando existe, e o mesmo aviso fixo quando ela não o envia. A interface é informativa: não há chamadas para comprar ou vender, e verde e vermelho indicam apenas valores positivos e negativos.
 
 O gráfico usa os registros OHLCV recebidos, em ordem cronológica: linha de fechamento ou candles, SMA 20, SMA 50, bandas de Bollinger e, no painel inferior, volume ou RSI (14). A roda do mouse e as teclas + e − aproximam; duplo clique ou Esc voltam à série inteira; as setas percorrem os registros. As séries dos indicadores são calculadas no desktop sobre o histórico recebido, com as mesmas fórmulas do backend, porque a API devolve só o valor mais recente de cada indicador (exibido na aba Indicadores). Ele preserva o horário e o fuso recebidos, exibe um ponto quando há um único registro e trata séries constantes, vazias e falhas de consulta. O eixo horizontal usa espaçamento uniforme entre registros, sem presumir uma frequência de pregão.
 
-As tabelas guardam datas e valores tipados: clicar no título de uma coluna ordena pelo valor, e não pelo texto exibido. As janelas acompanham a escala do Windows (conferido em 125%; 150% e 200% ainda sem validação).
+As tabelas guardam datas e valores tipados: clicar no título de uma coluna ordena pelo valor, e não pelo texto exibido.
+
+### Segundo plano
+
+Fechar a janela principal não encerra o aplicativo: ele continua na bandeja do Windows, com a sessão, o WebSocket e a consulta periódica ativos, e as notificações seguem chegando. O ícone da bandeja abre a janela (duplo clique) e tem um menu com "Abrir o InsightFlow", "Notificações" e "Encerrar o InsightFlow". Abrir o aplicativo de novo traz a janela que já está rodando, em vez de iniciar outra instância. Na primeira vez, um aviso explica que o aplicativo continua em segundo plano.
+
+As duas opções ficam em Configurações e valem para o usuário do Windows (`%LOCALAPPDATA%\InsightFlow\preferences.json`, sem segredos): continuar em segundo plano ao fechar a janela, ligada por padrão, e abrir o InsightFlow ao iniciar o Windows, desligada por padrão (entrada em `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`).
+
+Limite: com o aplicativo encerrado, ou antes de entrar na conta, não há entrega. A sessão fica só em memória, então depois de reiniciar o Windows é preciso entrar de novo; as notificações não lidas aparecem resumidas na entrada. Receber com o processo encerrado exigiria um canal de push do Windows no backend ou guardar a sessão no computador.
+
+### Escala do Windows
+
+As janelas acompanham a escala do Windows. Em 12/10/2026 as sete telas foram capturadas em 125%, 150% e 175% num monitor 1920 × 1080, no tamanho padrão e no mínimo, sem controles cortados:
+
+- **Até 150%:** todas as telas cabem na área útil. Em janelas baixas, como as de 150% nesse monitor, a Visão geral entra em modo compacto: saem os textos de apoio e a lista de resultados vazia, e a watchlist e o gráfico ficam com a altura.
+- **175%:** Entrar, Portfólio e Visão geral não cabem na área útil (1097 × 569 pixels lógicos). Elas mantêm o tamanho mínimo projetado e a janela ganha barras de rolagem, em vez de espremer os controles.
+- **200%:** o Windows não oferece essa escala em monitores 1920 × 1080 (o máximo é 175%), então ela não foi exercitada de verdade. A área útil equivalente (960 × 492) foi simulada em 125%, com o mesmo comportamento de rolagem. Num monitor de resolução maior, 200% deixa uma área igual ou maior que a de 150% conferida aqui.
+
+Não validado: mover a janela entre monitores de escalas diferentes com o aplicativo aberto.
 
 ## Estado da integração
 
@@ -75,9 +123,10 @@ O aplicativo usa endpoints reais, com erros e indisponibilidade apresentados na 
 
 Ainda pendentes:
 
-- notificações com o aplicativo fechado (o desktop não tem canal de push);
+- notificações com o aplicativo encerrado (processo fechado ou antes de entrar), que dependem de um canal de push no backend ou de guardar a sessão no computador;
 - histórico de dividendos e recuperação de senha, que dependem de contrato no backend;
-- instalador e assinatura do executável.
+- certificado de assinatura de código: o fluxo de assinatura está pronto, falta o certificado;
+- validação em 200% num monitor que ofereça essa escala e ao mover a janela entre monitores de escalas diferentes.
 
 O histórico de cada sincronização com o backend e com o cliente web está em [Integração com a API](docs/INTEGRACAO_API.md) e no [plano](docs/PLANO_DESKTOP.md).
 
@@ -87,11 +136,12 @@ O histórico de cada sincronização com o backend e com o cliente web está em 
 InsightFlow.Desktop.sln
 src/InsightFlow.Desktop/
   Api/                 Cliente HTTP, WebSocket de notificações e contratos JSON
-  Configuration/       Configuração da API
-  Forms/               Login/cadastro, janela principal, alertas, notificações, portfólio e chat
+  Configuration/       Configuração da API, preferências locais e inicialização com o Windows
+  Forms/               Login/cadastro, janela principal, alertas, notificações, portfólio, chat e configurações
   Presentation/        Tema, gráfico, formatos das tabelas, aviso de IA e mensagens de erro
   Session/             Sessão mantida em memória
 tests/InsightFlow.Desktop.Tests/
+installer/               Script do Inno Setup, geração do instalador e assinatura
 docs/
 ```
 
@@ -103,9 +153,9 @@ O aplicativo usa os componentes do .NET/Windows Forms, sem bibliotecas externas 
 dotnet test InsightFlow.Desktop.sln
 ```
 
-Os testes usam xUnit com respostas HTTP controladas e não acessam contas reais. Cobrem os contratos da API (autenticação, sessão e sua renovação, WebSocket de notificações, busca, watchlist, análise técnica, alertas, notificações, portfólio, IA, erros, cancelamento e respostas sem corpo), a configuração da URL, as mensagens de erro, os formatos de apresentação e as telas (ordenação das tabelas, layout e fluxos assíncronos).
+Os testes usam xUnit com respostas HTTP controladas e não acessam contas reais. Cobrem os contratos da API (autenticação, sessão e sua renovação, WebSocket de notificações, busca, watchlist, análise técnica, alertas, notificações, portfólio, IA, erros, cancelamento e respostas sem corpo), a configuração da URL, as mensagens de erro, os formatos de apresentação, as preferências locais, a instância única e as telas (ordenação das tabelas, layout, modo compacto, rolagem em telas pequenas, segundo plano na bandeja e fluxos assíncronos). Os testes de preferências e de inicialização usam uma pasta temporária e uma chave de teste no registro do usuário, nunca as do aplicativo.
 
-O workflow em [.github/workflows/desktop.yml](.github/workflows/desktop.yml) executa build e testes no Windows em cada pull request e nos envios para `main` e `develop`.
+O workflow em [.github/workflows/desktop.yml](.github/workflows/desktop.yml) executa build e testes no Windows em cada pull request e nos envios para `main` e `develop`, e em seguida gera e confere o instalador.
 
 ## Documentação
 

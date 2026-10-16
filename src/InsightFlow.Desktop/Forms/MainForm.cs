@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using InsightFlow.Desktop.Api;
 using InsightFlow.Desktop.Api.Contracts;
+using InsightFlow.Desktop.Configuration;
 using InsightFlow.Desktop.Presentation;
 using InsightFlow.Desktop.Session;
 
@@ -17,6 +18,9 @@ internal sealed partial class MainForm : AsyncForm
     private readonly InsightFlowApiClient _api;
     private readonly UserSession _session;
     private readonly NotificationStream? _notificationStream;
+    // Sem preferências (testes e ferramentas), fechar a janela encerra o aplicativo e Configurações fica indisponível.
+    private readonly UserPreferences? _preferences;
+    private readonly WindowsStartup? _startup;
     private readonly int _sessionVersion;
     private readonly List<WatchlistItemResponse> _watchlist = [];
     // Cotação e sinais vigentes por ativo da watchlist; sobrevivem às remontagens da grade.
@@ -31,6 +35,8 @@ internal sealed partial class MainForm : AsyncForm
     private bool _bindingSignals;
     private bool _watchBusy;
     private bool _endingSession;
+    private bool _exiting;
+    private bool _backgroundNoticeOnScreen;
     private bool _pollingNotifications;
     private bool _pollAgain;
     private bool _notificationsSeeded;
@@ -44,11 +50,14 @@ internal sealed partial class MainForm : AsyncForm
     private WatchlistItemResponse? SelectedItem => _watchGrid.CurrentRow?.Tag as WatchlistItemResponse;
     private bool IsCurrentSession => !IsClosing && _session.Version == _sessionVersion;
 
-    public MainForm(InsightFlowApiClient api, UserSession session, Uri apiUrl, NotificationStream? notificationStream = null)
+    public MainForm(InsightFlowApiClient api, UserSession session, Uri apiUrl, NotificationStream? notificationStream = null,
+        UserPreferences? preferences = null, WindowsStartup? startup = null)
     {
         _api = api;
         _session = session;
         _notificationStream = notificationStream;
+        _preferences = preferences;
+        _startup = startup;
         _sessionVersion = session.Version;
         BuildLayout(apiUrl);
         _searchButton.Click += (_, _) => Search();
@@ -81,12 +90,19 @@ internal sealed partial class MainForm : AsyncForm
         _checkConnection.Click += (_, _) => CheckConnection();
         _analysisButton.Click += (_, _) => LoadAnalysis();
         _notificationTimer.Tick += (_, _) => PollNotifications();
-        _tray.BalloonTipClicked += (_, _) => OpenNotificationsFromTray();
-        _tray.DoubleClick += (_, _) => OpenNotificationsFromTray();
+        _tray.BalloonTipClicked += (_, _) =>
+        {
+            // O aviso de segundo plano só traz a janela de volta; os demais levam às notificações.
+            if (_backgroundNoticeOnScreen) ShowFromTray();
+            else OpenNotificationsFromTray();
+        };
+        _tray.DoubleClick += (_, _) => ShowFromTray();
         Resize += (_, _) =>
         {
             if (WindowState != FormWindowState.Minimized) _restoredState = WindowState;
         };
+        Load += (_, _) => ApplyDensity();
+        ClientSizeChanged += (_, _) => ApplyDensity();
         Shown += (_, _) =>
         {
             CheckConnection();
@@ -138,6 +154,7 @@ internal sealed partial class MainForm : AsyncForm
         _searchCancellation?.Cancel();
         _searchResults.Items.Clear();
         SetStatus(_searchStatus, "Pesquise um ativo para adicioná-lo.");
+        ApplyDensity();
         UpdateActions();
     }
 
@@ -162,6 +179,7 @@ internal sealed partial class MainForm : AsyncForm
                 var result = await _api.SearchAssetsAsync(term, request.Token);
                 if (!IsCurrentSession || version != _searchVersion || request.IsCancellationRequested) return;
                 foreach (var asset in result) _searchResults.Items.Add(new SearchResult(asset));
+                ApplyDensity();
                 SetStatus(_searchStatus, result.Count == 0 ? "Nenhum ativo encontrado." : $"{result.Count} resultado(s). Selecione e adicione à watchlist.");
                 if (result.Count > 0) _searchResults.SelectedIndex = 0;
             }
@@ -672,6 +690,7 @@ internal sealed partial class MainForm : AsyncForm
     private void ShowBalloon(string title, string text)
     {
         if (!_tray.Visible) return;
+        _backgroundNoticeOnScreen = false;
         _tray.ShowBalloonTip(8000, title, text.Length <= 240 ? text : text[..237] + "…", ToolTipIcon.Info);
     }
 
@@ -716,6 +735,7 @@ internal sealed partial class MainForm : AsyncForm
     {
         if (_endingSession) return;
         _endingSession = true;
+        _exiting = true;
         SessionExpired = expired;
         LogoutRequested = true;
         StopNotifications();
@@ -790,10 +810,64 @@ internal sealed partial class MainForm : AsyncForm
 
     private void OpenNotificationsFromTray()
     {
-        // O aviso pode ser clicado com a janela minimizada; a tela de notificações precisa de uma janela visível por trás.
-        if (WindowState == FormWindowState.Minimized) WindowState = _restoredState;
-        Activate();
+        // O aviso pode ser clicado com a janela minimizada ou na bandeja; a tela de notificações precisa de uma janela visível por trás.
+        ShowFromTray();
         OpenNotifications();
+    }
+
+    // Fechar a janela não encerra o aplicativo quando a preferência pede a bandeja: a sessão, o WebSocket e a
+    // consulta periódica continuam, e as notificações seguem chegando.
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (e.CloseReason == CloseReason.UserClosing && !_exiting && _tray.Visible && _preferences is { KeepRunningInTray: true })
+        {
+            e.Cancel = true;
+            HideToTray();
+            return;
+        }
+        base.OnFormClosing(e);
+    }
+
+    private void HideToTray()
+    {
+        Hide();
+        if (_preferences is not { BackgroundNoticeShown: false } preferences) return;
+        ShowBalloon("InsightFlow continua em segundo plano",
+            "As notificações continuam chegando. Para encerrar, clique com o botão direito no ícone da bandeja.");
+        _backgroundNoticeOnScreen = true;
+        preferences.BackgroundNoticeShown = true;
+        try
+        {
+            preferences.Save();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Sem gravar a preferência, o aviso volta a aparecer na próxima execução.
+        }
+    }
+
+    // Traz a janela de volta da bandeja ou da barra de tarefas; também atende a quem abre o aplicativo de novo.
+    internal void ShowFromTray()
+    {
+        if (IsClosing) return;
+        if (!Visible) Show();
+        if (WindowState == FormWindowState.Minimized) WindowState = _restoredState;
+        // Com um módulo aberto, é ele que recebe o foco.
+        (OwnedForms.FirstOrDefault(form => form.Visible) ?? this).Activate();
+    }
+
+    private void Exit()
+    {
+        if (_dialogOpen) return;
+        _exiting = true;
+        Close();
+    }
+
+    private void OpenSettings()
+    {
+        if (!IsCurrentSession || _dialogOpen || _preferences is null || _startup is null) return;
+        using var form = new SettingsForm(_preferences, _startup);
+        ShowModule(form, () => false);
     }
 
     private void OpenPortfolio()
@@ -836,6 +910,7 @@ internal sealed partial class MainForm : AsyncForm
         {
             _notificationTimer.Dispose();
             _tray.Dispose();
+            _trayMenu.Dispose();
         }
         base.Dispose(disposing);
     }
