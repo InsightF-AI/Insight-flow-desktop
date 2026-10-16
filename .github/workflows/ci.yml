@@ -1,4 +1,4 @@
-name: Desktop
+name: CI
 
 on:
   # Branches de trabalho são validadas pelo pull request; o push direto só roda nas branches de integração.
@@ -15,7 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  verificar:
+    name: Build e testes
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -24,6 +25,12 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
+      - name: Cache do NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
       - name: Restore
         run: dotnet restore InsightFlow.Desktop.sln
       - name: Build
@@ -31,8 +38,11 @@ jobs:
       - name: Test
         run: dotnet test InsightFlow.Desktop.sln --configuration Release --no-build --no-restore
 
-  installer:
-    needs: build-and-test
+  # So a main, que e a branch de producao, publica o instalador.
+  instalador:
+    name: Instalador
+    needs: verificar
+    if: github.ref == 'refs/heads/main'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -41,6 +51,12 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
+      - name: Cache do NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
       - name: Inno Setup
         shell: pwsh
         run: |
@@ -68,6 +84,16 @@ jobs:
           foreach ($file in 'InsightFlow.Desktop.exe', 'appsettings.json', 'unins000.exe') {
             if (-not (Test-Path (Join-Path $target $file))) { throw "$file não foi instalado." }
           }
+          # Atualização: o padrão antigo (servidor local) é trocado pela API de produção; uma URL editada é mantida.
+          $settings = Join-Path $target 'appsettings.json'
+          $shipped = (Get-Content $settings -Raw | ConvertFrom-Json).Api.BaseUrl
+          foreach ($case in @(@{ Before = 'http://localhost:8000'; After = $shipped }, @{ Before = 'https://api.exemplo.test'; After = 'https://api.exemplo.test' })) {
+            [IO.File]::WriteAllText($settings, "{`"Api`": {`"BaseUrl`": `"$($case.Before)`", `"TimeoutSeconds`": 30}}")
+            $upgrade = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$target`"" -Wait -PassThru
+            if ($upgrade.ExitCode -ne 0) { throw "A atualização falhou (código $($upgrade.ExitCode))." }
+            $actual = (Get-Content $settings -Raw | ConvertFrom-Json).Api.BaseUrl
+            if ($actual -ne $case.After) { throw "Depois da atualização, Api.BaseUrl era $actual; esperado $($case.After)." }
+          }
           $uninstall = Start-Process (Join-Path $target 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw "A desinstalação falhou (código $($uninstall.ExitCode))." }
           # O desinstalador termina o trabalho num segundo processo; o executável some logo depois.
@@ -79,3 +105,4 @@ jobs:
           name: InsightFlow-Setup
           path: artifacts/installer/InsightFlow-Setup-*.exe
           if-no-files-found: error
+          retention-days: 7

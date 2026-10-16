@@ -12,10 +12,10 @@ dotnet build InsightFlow.Desktop.sln
 dotnet run --project src/InsightFlow.Desktop
 ```
 
-A URL padrão do servidor é `http://localhost:8000`. Para outro ambiente, configure a raiz do servidor, sem `/api/v1`:
+A URL padrão do servidor é a API de produção, `https://api-insight.agilesoftware.net.br`, definida em [appsettings.json](src/InsightFlow.Desktop/appsettings.json). Para outro ambiente, configure a raiz do servidor, sem `/api/v1`. A homologação, publicada a cada envio para a `main` do backend, fica em `https://hom-api-insight.agilesoftware.net.br`:
 
 ```powershell
-$env:INSIGHTFLOW_API_URL = 'https://api.exemplo.com'
+$env:INSIGHTFLOW_API_URL = 'https://hom-api-insight.agilesoftware.net.br'   # ou http://localhost:8000 com o backend local
 dotnet run --project src/InsightFlow.Desktop
 ```
 
@@ -62,11 +62,11 @@ powershell -ExecutionPolicy Bypass -File installer\build.ps1
 O script publica o executável único, compila o instalador e grava `artifacts/installer/InsightFlow-Setup-<versão>.exe` (cerca de 45 MB). A versão vem de `Version` no `.csproj`. O instalador:
 
 - instala por usuário, sem administrador, em `%LOCALAPPDATA%\Programs\InsightFlow`, com atalho no menu Iniciar e, se marcado, na área de trabalho;
-- preserva o `appsettings.json` já existente numa atualização, para não perder a URL da API configurada;
+- preserva o `appsettings.json` já existente numa atualização, para não perder a URL da API configurada; a exceção é o arquivo ainda com o padrão antigo dos primeiros instaladores (`http://localhost:8000`), trocado pelo que aponta para a produção;
 - pede para encerrar o aplicativo se ele estiver aberto, inclusive na bandeja;
 - na desinstalação, remove as preferências locais e a entrada de inicialização com o Windows.
 
-O job `installer` do workflow gera o mesmo instalador em cada execução, instala e desinstala em modo silencioso para conferi-lo, e o publica como artefato `InsightFlow-Setup`.
+O job `instalador` do workflow, só nos envios para a `main`, gera o mesmo instalador, instala, atualiza por cima (conferindo a troca do padrão antigo e a preservação de uma URL editada) e desinstala em modo silencioso, e o publica como artefato `InsightFlow-Setup`.
 
 ### Assinatura
 
@@ -155,7 +155,7 @@ dotnet test InsightFlow.Desktop.sln
 
 Os testes usam xUnit com respostas HTTP controladas e não acessam contas reais. Cobrem os contratos da API (autenticação, sessão e sua renovação, WebSocket de notificações, busca, watchlist, análise técnica, alertas, notificações, portfólio, IA, erros, cancelamento e respostas sem corpo), a configuração da URL, as mensagens de erro, os formatos de apresentação, as preferências locais, a instância única e as telas (ordenação das tabelas, layout, modo compacto, rolagem em telas pequenas, segundo plano na bandeja e fluxos assíncronos). Os testes de preferências e de inicialização usam uma pasta temporária e uma chave de teste no registro do usuário, nunca as do aplicativo.
 
-O workflow em [.github/workflows/desktop.yml](.github/workflows/desktop.yml) executa build e testes no Windows em cada pull request e nos envios para `main` e `develop`, e em seguida gera e confere o instalador.
+O workflow em [.github/workflows/ci.yml](.github/workflows/ci.yml) executa build e testes no Windows em cada pull request e nos envios para `main` e `develop`. O instalador e gerado, conferido e publicado como artefato (7 dias) apenas nos envios para a `main`.
 
 ## Documentação
 

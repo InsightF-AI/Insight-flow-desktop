@@ -253,3 +253,13 @@ Não validado:
 - o carimbo de tempo da assinatura (o teste local assinou sem ele) e a assinatura com um certificado confiável.
 
 Continuam fora do alcance do desktop sozinho: receber com o processo encerrado ou antes da entrada (exige um canal de push do Windows no backend, ou guardar a sessão no computador, o que muda a decisão de manter tokens só em memória) e o certificado de assinatura de código (tem custo e exige validação de identidade).
+
+## API publicada (16/10/2026)
+
+O backend ganhou homologação e produção (detalhes em [Integração com a API](INTEGRACAO_API.md#api-publicada-16102026)), e a `main` do desktop passou a apontar para a produção (PR #15). Alinhamentos desta entrega:
+
+- o padrão interno de `ApiSettings`, usado quando o `appsettings.json` não informa a URL, deixou de ser `http://localhost:8000` e é o mesmo da produção; um teste confere que os dois não divergem;
+- o instalador preservava qualquer `appsettings.json` numa atualização, então quem instalou antes continuaria em `localhost`. Agora ele troca o arquivo que ainda tem esse padrão antigo e mantém uma URL editada; o job `instalador` do CI confere os dois casos;
+- README com a URL da homologação e a descrição atual do job `instalador`, que só roda na `main`.
+
+Evidência: 111 testes aprovados, instalador compilado com o Inno Setup 6.7.3 e o aplicativo validado contra a homologação (ver a integração). Não validado nesta máquina: a atualização por cima de uma instalação existente, porque o Smart App Control bloqueia o instalador sem assinatura; o CI faz essa conferência no envio para a `main`. O login na produção falhava com erro 500 do servidor no momento da conferência.

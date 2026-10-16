@@ -1,5 +1,19 @@
 # Integração com a API InsightFlow
 
+## API publicada (16/10/2026)
+
+O backend passou a ter dois ambientes, publicados pelo CD do repositório do backend (`main` em `ea10de4`, tag `v0.1.0`). O código da API é o mesmo de `a8bcb02`, conferido nas seções abaixo; mudaram só o pipeline e os arquivos de implantação.
+
+| Ambiente | URL | Quando muda |
+| --- | --- | --- |
+| Produção | `https://api-insight.agilesoftware.net.br` | tag `vX.Y.Z` ou disparo manual, reaproveitando a imagem da homologação |
+| Homologação | `https://hom-api-insight.agilesoftware.net.br` | cada envio para a `main` do backend |
+
+- **Configuração:** `appsettings.json` e o padrão interno de `ApiSettings` apontam para a produção; `INSIGHTFLOW_API_URL` continua sobrepondo (homologação ou `http://localhost:8000`). Nos dois ambientes, o `openapi.json` publicado é idêntico e tem todas as rotas que o desktop usa.
+- **WebSocket:** o proxy dos dois ambientes aceita o upgrade em `wss://.../api/v1/notificacoes/ws`; o desktop já troca `https` por `wss`.
+- **Validação na homologação:** com a conta de desenvolvimento da equipe, o aplicativo entrou, autenticou o WebSocket em 275 ms e carregou watchlist, cotação, gráfico, portfólio e notificações, sem controles cortados em 125%. BOVA11 e HGLG11 vieram sem cotação e o benchmark (CDI e Ibovespa) "indisponível"; são dados do ambiente, não do cliente.
+- **Produção em 16/10/2026, 17h30:** `/health` responde, mas `POST /auth/login` devolve 500 até para um e-mail inexistente (a homologação devolve 401), e por isso o login no desktop falha. A falha é do servidor e se corrige no backend, sem mudança no desktop.
+
 ## Segundo plano na bandeja (12/10/2026)
 
 Mudança só no desktop: o contrato da API é o mesmo da seção de 08/10/2026 (backend `main` em `a8bcb02`) e o backend não foi alterado.

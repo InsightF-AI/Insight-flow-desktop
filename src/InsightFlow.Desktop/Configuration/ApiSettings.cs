@@ -13,10 +13,12 @@ public sealed class ApiSettings
         TimeoutSeconds = timeoutSeconds;
     }
 
+    // API de produção, a mesma de appsettings.json; vale quando o arquivo não existe ou não informa a URL.
+    internal const string DefaultBaseUrl = "https://api-insight.agilesoftware.net.br";
+
     public static ApiSettings Load()
     {
-        const string defaultBaseUrl = "http://localhost:8000";
-        var baseUrl = defaultBaseUrl;
+        var baseUrl = DefaultBaseUrl;
         var timeoutSeconds = 30;
         var settingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
 
@@ -44,7 +46,7 @@ public sealed class ApiSettings
                             throw new InvalidOperationException("Api.BaseUrl deve ser uma URL em texto.");
                         }
 
-                        baseUrl = configuredUrl.GetString() ?? defaultBaseUrl;
+                        baseUrl = configuredUrl.GetString() ?? DefaultBaseUrl;
                     }
 
                     if (api.TryGetProperty("TimeoutSeconds", out var configuredTimeout))

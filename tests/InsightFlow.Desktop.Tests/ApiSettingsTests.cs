@@ -32,6 +32,16 @@ public sealed class ApiSettingsTests
         Assert.DoesNotContain("secret", error.Message);
     }
 
+    [Fact]
+    public void Default_url_is_the_production_api_shipped_in_appsettings()
+    {
+        var shipped = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+        using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(shipped));
+
+        Assert.Equal(ApiSettings.DefaultBaseUrl, document.RootElement.GetProperty("Api").GetProperty("BaseUrl").GetString());
+        Assert.Equal("https", ApiSettings.Create(ApiSettings.DefaultBaseUrl, 30).BaseUrl.Scheme);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(301)]
