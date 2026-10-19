@@ -115,18 +115,20 @@ As janelas acompanham a escala do Windows. Em 12/10/2026 as sete telas foram cap
 - **175%:** Entrar, Portfólio e Visão geral não cabem na área útil (1097 × 569 pixels lógicos). Elas mantêm o tamanho mínimo projetado e a janela ganha barras de rolagem, em vez de espremer os controles.
 - **200%:** o Windows não oferece essa escala em monitores 1920 × 1080 (o máximo é 175%), então ela não foi exercitada de verdade. A área útil equivalente (960 × 492) foi simulada em 125%, com o mesmo comportamento de rolagem. Num monitor de resolução maior, 200% deixa uma área igual ou maior que a de 150% conferida aqui.
 
-Não validado: mover a janela entre monitores de escalas diferentes com o aplicativo aberto.
+Em 18/10/2026 as sete telas foram abertas num monitor de 125% e levadas, com a janela aberta, para um de 100% e de volta: a escala da janela acompanha o monitor, o tamanho mínimo é refeito em cada um e nenhum controle fica cortado.
+
+As barras de rolagem da janela, dos painéis, das tabelas e dos textos usam o tema escuro do Windows (10 versão 1809 ou mais nova), em vez do cinza claro padrão.
 
 ## Estado da integração
 
-O aplicativo usa endpoints reais, com erros e indisponibilidade apresentados na interface. O contrato foi conferido no código do backend e exercitado contra instâncias locais em Docker; a última conferência, em 09/10/2026, usou o backend em `a8bcb02` e cobriu watchlist, cotações, sinais, alertas, portfólio, resumo diário, análise e chat por IA e o aviso na bandeja com uma notificação recebida pelo WebSocket. Ainda não há um servidor mantido pela equipe para validar a integração. A IA depende de estar habilitada no servidor.
+O aplicativo usa endpoints reais, com erros e indisponibilidade apresentados na interface. O contrato foi conferido no código do backend e exercitado contra instâncias locais em Docker; a conferência completa, em 09/10/2026, usou o backend em `a8bcb02` e cobriu watchlist, cotações, sinais, alertas, portfólio, resumo diário, análise e chat por IA e o aviso na bandeja com uma notificação recebida pelo WebSocket. Desde 16/10/2026 a API também está publicada em homologação e produção, e o aplicativo foi validado na homologação (ver [Integração com a API](docs/INTEGRACAO_API.md#api-publicada-16102026)). A IA depende de estar habilitada no servidor.
 
 Ainda pendentes:
 
 - notificações com o aplicativo encerrado (processo fechado ou antes de entrar), que dependem de um canal de push no backend ou de guardar a sessão no computador;
 - histórico de dividendos e recuperação de senha, que dependem de contrato no backend;
 - certificado de assinatura de código: o fluxo de assinatura está pronto, falta o certificado;
-- validação em 200% num monitor que ofereça essa escala e ao mover a janela entre monitores de escalas diferentes.
+- validação em 200% num monitor que ofereça essa escala.
 
 O histórico de cada sincronização com o backend e com o cliente web está em [Integração com a API](docs/INTEGRACAO_API.md) e no [plano](docs/PLANO_DESKTOP.md).
 

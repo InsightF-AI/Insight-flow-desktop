@@ -13,6 +13,7 @@ O backend passou a ter dois ambientes, publicados pelo CD do repositório do bac
 - **WebSocket:** o proxy dos dois ambientes aceita o upgrade em `wss://.../api/v1/notificacoes/ws`; o desktop já troca `https` por `wss`.
 - **Validação na homologação:** com a conta de desenvolvimento da equipe, o aplicativo entrou, autenticou o WebSocket em 275 ms e carregou watchlist, cotação, gráfico, portfólio e notificações, sem controles cortados em 125%. BOVA11 e HGLG11 vieram sem cotação e o benchmark (CDI e Ibovespa) "indisponível"; são dados do ambiente, não do cliente.
 - **Produção em 16/10/2026, 17h30:** `/health` responde, mas `POST /auth/login` devolve 500 até para um e-mail inexistente (a homologação devolve 401), e por isso o login no desktop falha. A falha é do servidor e se corrige no backend, sem mudança no desktop.
+- **Produção em 18/10/2026:** o login voltou a responder 401 para um e-mail inexistente, como a homologação; o erro 500 acima não se repete. Na mesma hora, a homologação não respondia (tempo esgotado na conexão, também em `/health`).
 
 ## Segundo plano na bandeja (12/10/2026)
 

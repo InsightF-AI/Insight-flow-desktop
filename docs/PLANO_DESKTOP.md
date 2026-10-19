@@ -263,3 +263,14 @@ O backend ganhou homologação e produção (detalhes em [Integração com a API
 - README com a URL da homologação e a descrição atual do job `instalador`, que só roda na `main`.
 
 Evidência: 111 testes aprovados, instalador compilado com o Inno Setup 6.7.3 e o aplicativo validado contra a homologação (ver a integração). Não validado nesta máquina: a atualização por cima de uma instalação existente, porque o Smart App Control bloqueia o instalador sem assinatura; o CI faz essa conferência no envio para a `main`. O login na produção falhava com erro 500 do servidor no momento da conferência.
+
+## Barras de rolagem escuras e troca de monitor (18/10/2026)
+
+Itens da issue #55 do backend que dependiam só do desktop. O contrato da API não mudou.
+
+- **Barras de rolagem:** o Windows desenhava as barras da janela, dos painéis, das tabelas e dos textos em cinza claro, destoando do tema. `Presentation/DarkScrollBars` aplica a elas o tema escuro do próprio Windows (`DarkMode_Explorer`, Windows 10 1809 ou mais novo; nos anteriores o pedido é ignorado). Toda tela o recebe por `AsyncForm`, inclusive os controles adicionados depois de aberta e os que têm a janela recriada. Rótulos, botões e caixas de uma linha não são tocados.
+- **Troca de monitor:** com a janela aberta, as sete telas foram levadas de um monitor de 125% para um de 100% e de volta. Em todas a escala da janela acompanhou o monitor (DPI 120 → 96 → 120), o tamanho mínimo foi refeito a partir do projetado (o mesmo em pixels lógicos nos dois) e nenhum controle ficou cortado. Não foi preciso mudar o código: o `OnDpiChanged` de `AsyncForm` já cobria esse caso.
+
+Evidência: compilação sem avisos e 112 testes aprovados (eram 111), com um teste novo que confere o tema nas barras da janela, dos painéis, do texto e das tabelas, também num painel adicionado depois. Com as telas abertas contra o backend local, a captura dos pixels reais da tela mostra as barras escuras no texto de detalhes das Notificações e nas barras da janela quando ela fica menor que o mínimo projetado. A troca de monitor foi feita movendo a janela por código, e não arrastando com o mouse.
+
+Continua não validado: 200% real, que o Windows não oferece em monitores 1920 × 1080. A lista suspensa das caixas de seleção é uma janela do sistema à parte e fica fora desta mudança.
