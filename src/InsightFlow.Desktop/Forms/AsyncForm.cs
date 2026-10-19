@@ -22,6 +22,7 @@ internal class AsyncForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = UiTheme.Background;
         StartPosition = FormStartPosition.CenterScreen;
+        DarkScrollBars.Attach(this);
     }
 
     // Toda tela derivada chama este método ao fim do construtor.

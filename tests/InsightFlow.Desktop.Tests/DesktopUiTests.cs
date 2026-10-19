@@ -190,6 +190,27 @@ public sealed class DesktopUiTests
     });
 
     [Fact]
+    public Task Window_panel_text_and_grid_scroll_bars_get_the_dark_theme_including_controls_added_later() => OnUiThread(() =>
+    {
+        using var http = new HttpClient(RecordingHttpMessageHandler.ReturningJson("[]")) { BaseAddress = new Uri("https://api.example.test") };
+        var session = new UserSession(); session.Start("test-token");
+        using var form = new PortfolioForm(new InsightFlowApiClient(http, session), session, []);
+        form.CreateControl();
+        var scrolling = Descendants(form).Prepend(form).Where(DarkScrollBars.Scrolls).ToList();
+        // A janela, os painéis, o texto do resumo diário e as barras das tabelas, que são filhas delas.
+        Assert.Contains(form, scrolling);
+        Assert.Contains(Field<TextBox>(form, "_summaryText"), scrolling);
+        Assert.Contains(scrolling, control => control is ScrollBar && control.Parent is DataGridView);
+        Assert.All(scrolling, control => Assert.True(HasDarkScrollBars(control)));
+        Assert.False(DarkScrollBars.Scrolls(new TextBox()));
+
+        var late = new Panel();
+        late.Controls.Add(UiTheme.Grid());
+        form.Controls[0].Controls.Add(late);
+        Assert.All(Descendants(late).Prepend(late).Where(DarkScrollBars.Scrolls), control => Assert.True(HasDarkScrollBars(control)));
+    });
+
+    [Fact]
     public Task Portfolio_grids_sort_by_value_and_a_failed_refresh_does_not_keep_old_totals() => OnUiThread(() =>
     {
         var petr = new AssetResponse { Id = Guid.NewGuid(), Ticker = "PETR4", Nome = "Petrobras", Tipo = "ACAO", Moeda = "BRL" };
@@ -662,6 +683,9 @@ public sealed class DesktopUiTests
 
     private static IEnumerable<Control> Descendants(Control control) =>
         control.Controls.Cast<Control>().SelectMany(child => new[] { child }.Concat(Descendants(child)));
+    private static bool HasDarkScrollBars(Control control) =>
+        ((System.Runtime.CompilerServices.ConditionalWeakTable<Control, object>)typeof(DarkScrollBars)
+            .GetField("Attached", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!).TryGetValue(control, out _);
     private static T Field<T>(object owner, string name) => (T)owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
     private static void SetField(object owner, string name, object value) => owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(owner, value);
     private static void Invoke(object owner, string name, params object[] arguments) => owner.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(owner, arguments);
