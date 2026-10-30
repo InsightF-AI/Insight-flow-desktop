@@ -107,6 +107,25 @@ public sealed class ApiClientContractTests
     }
 
     [Fact]
+    public async Task Catalog_lists_registered_assets_with_their_internal_ids()
+    {
+        var handler = RecordingHttpMessageHandler.ReturningJson(
+            $$"""[{"id":"{{AssetId}}","ticker":"BTC","nome":"Bitcoin","tipo":"CRIPTO","setor":null,"moeda":"BRL"}]""");
+        using var http = CreateHttpClient(handler);
+        var api = new InsightFlowApiClient(http, new UserSession());
+
+        var catalog = await api.GetCatalogAsync(CancellationToken.None);
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal("/api/v1/ativos/catalogo", request.Uri.AbsolutePath);
+        var asset = Assert.Single(catalog);
+        Assert.Equal(AssetId, asset.Id);
+        Assert.Equal("BTC", asset.Ticker);
+        Assert.Null(asset.Setor);
+    }
+
+    [Fact]
     public async Task History_uses_asset_uuid_and_the_documented_period_literal()
     {
         var handler = RecordingHttpMessageHandler.ReturningJson("[]");

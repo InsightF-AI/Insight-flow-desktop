@@ -153,7 +153,7 @@ internal sealed partial class MainForm : AsyncForm
         _searchVersion++;
         _searchCancellation?.Cancel();
         _searchResults.Items.Clear();
-        SetStatus(_searchStatus, "Pesquise um ativo para adicioná-lo.");
+        SetStatus(_searchStatus, "Pesquise um ativo para adicioná-lo, ou busque sem termo para ver o catálogo.");
         ApplyDensity();
         UpdateActions();
     }
@@ -161,22 +161,19 @@ internal sealed partial class MainForm : AsyncForm
     private void Search()
     {
         var term = _search.Text.Trim();
-        if (!IsCurrentSession || term.Length == 0)
-        {
-            SetStatus(_searchStatus, "Digite um ticker ou nome para buscar.");
-            _search.Focus();
-            return;
-        }
+        if (!IsCurrentSession) return;
         InvalidateSearch();
         var version = _searchVersion;
-        SetStatus(_searchStatus, "Buscando ativos…");
+        SetStatus(_searchStatus, term.Length == 0 ? "Carregando o catálogo de ativos…" : "Buscando ativos…");
         Run(async lifetime =>
         {
             using var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
             _searchCancellation = request;
             try
             {
-                var result = await _api.SearchAssetsAsync(term, request.Token);
+                var result = term.Length == 0
+                    ? (await _api.GetCatalogAsync(request.Token)).Select(ToSearchAsset).ToList()
+                    : await _api.SearchAssetsAsync(term, request.Token);
                 if (!IsCurrentSession || version != _searchVersion || request.IsCancellationRequested) return;
                 foreach (var asset in result) _searchResults.Items.Add(new SearchResult(asset));
                 ApplyDensity();
@@ -916,6 +913,9 @@ internal sealed partial class MainForm : AsyncForm
     }
 
     private sealed record WatchMarket(QuoteResponse? Quote = null, int? ActiveSignals = null);
+
+    private static SearchAssetResponse ToSearchAsset(AssetResponse asset) =>
+        new() { Ticker = asset.Ticker, Nome = asset.Nome, Tipo = asset.Tipo, Moeda = asset.Moeda, Setor = asset.Setor };
 
     private sealed record SearchResult(SearchAssetResponse Asset)
     {
