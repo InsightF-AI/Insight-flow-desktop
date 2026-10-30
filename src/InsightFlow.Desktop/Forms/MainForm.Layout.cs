@@ -8,7 +8,7 @@ internal sealed partial class MainForm
     private readonly Button _searchButton = UiTheme.Button("&Buscar", true);
     private readonly Button _addButton = UiTheme.Button("&Adicionar à watchlist", true);
     private readonly ListBox _searchResults = new() { Dock = DockStyle.Fill, IntegralHeight = false, BorderStyle = BorderStyle.None };
-    private readonly Label _searchStatus = UiTheme.Label("Pesquise um ativo para adicioná-lo.", 9);
+    private readonly Label _searchStatus = UiTheme.Label("Pesquise um ativo para adicioná-lo, ou busque sem termo para ver o catálogo.", 9);
     private readonly DataGridView _watchGrid = UiTheme.Grid();
     private readonly Button _refreshWatch = UiTheme.Button("Atualizar &lista");
     private readonly Button _removeButton = UiTheme.Button("&Remover");

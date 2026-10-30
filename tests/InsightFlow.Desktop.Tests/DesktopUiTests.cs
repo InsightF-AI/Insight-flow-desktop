@@ -317,6 +317,44 @@ public sealed class DesktopUiTests
     });
 
     [Fact]
+    public Task A_new_user_without_watchlist_picks_a_catalog_asset_and_gets_its_current_price() => OnUiThread(() =>
+    {
+        var petr = new AssetResponse { Id = Guid.NewGuid(), Ticker = "PETR4", Nome = "Petrobras", Tipo = "ACAO", Moeda = "BRL" };
+        var btcId = Guid.NewGuid();
+        var handler = new RecordingHttpMessageHandler((request, _) => Task.FromResult(request.Uri.AbsolutePath switch
+        {
+            "/api/v1/ativos/catalogo" => RecordingHttpMessageHandler.Json($$"""
+                [{"id":"{{btcId}}","ticker":"BTC","nome":"Bitcoin","tipo":"CRIPTO","setor":null,"moeda":"BRL"},
+                 {"id":"{{petr.Id}}","ticker":"PETR4","nome":"Petrobras","tipo":"ACAO","setor":null,"moeda":"BRL"}]
+                """),
+            var path when path == $"/api/v1/ativos/{btcId}/cotacao" => RecordingHttpMessageHandler.Json(
+                """{"ticker":"BTC","preco":"416915","variacao":"0","variacao_percentual":"0","maxima_dia":"420000","minima_dia":"410000","volume":"10"}"""),
+            _ => RecordingHttpMessageHandler.Json("[]")
+        }));
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test") };
+        var session = new UserSession(); session.Start("test-token");
+
+        using var empty = new PortfolioForm(new InsightFlowApiClient(http, session), session, []);
+        empty.CreateControl();
+        Invoke(empty, "LoadCatalog");
+        PumpUntil(() => !Work(empty).HasPending);
+        var assets = Field<ComboBox>(empty, "_asset");
+        Assert.Equal(["BTC", "PETR4"], assets.Items.Cast<object>().Select(item => assets.GetItemText(item).Split(' ')[0]));
+        Assert.Equal(0, assets.SelectedIndex);
+        Assert.Equal(416915m, Field<NumericUpDown>(empty, "_unitPrice").Value);
+
+        using var withWatchlist = new PortfolioForm(new InsightFlowApiClient(http, session), session, [petr]);
+        withWatchlist.CreateControl();
+        var chosen = Field<ComboBox>(withWatchlist, "_asset");
+        Field<NumericUpDown>(withWatchlist, "_unitPrice").Value = 38.5m;
+        Invoke(withWatchlist, "LoadCatalog");
+        PumpUntil(() => !Work(withWatchlist).HasPending);
+        Assert.Equal(2, chosen.Items.Count);
+        Assert.StartsWith("PETR4", chosen.GetItemText(chosen.SelectedItem));
+        Assert.Equal(38.5m, Field<NumericUpDown>(withWatchlist, "_unitPrice").Value);
+    });
+
+    [Fact]
     public Task Saving_the_notification_preference_updates_the_row_without_reloading_asset_details() => OnUiThread(() =>
     {
         var assetId = Guid.NewGuid();

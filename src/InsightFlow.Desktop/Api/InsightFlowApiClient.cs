@@ -109,6 +109,9 @@ public sealed class InsightFlowApiClient
             HttpMethod.Get, $"/api/v1/ativos/buscar?termo={Uri.EscapeDataString(termo.Trim())}", null, true, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<AssetResponse>> GetCatalogAsync(CancellationToken cancellationToken = default) =>
+        await SendAsync<List<AssetResponse>>(HttpMethod.Get, "/api/v1/ativos/catalogo", null, true, cancellationToken).ConfigureAwait(false);
+
     public async Task<IReadOnlyList<WatchlistItemResponse>> GetWatchlistAsync(CancellationToken cancellationToken = default) =>
         await SendAsync<List<WatchlistItemResponse>>(HttpMethod.Get, "/api/v1/watchlist", null, true, cancellationToken).ConfigureAwait(false);
 
