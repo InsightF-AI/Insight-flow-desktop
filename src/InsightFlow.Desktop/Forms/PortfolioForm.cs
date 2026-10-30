@@ -12,7 +12,7 @@ internal sealed class PortfolioForm : AsyncForm
     private readonly InsightFlowApiClient _api;
     private readonly UserSession _session;
     private readonly int _sessionVersion;
-    private readonly IReadOnlyDictionary<Guid, AssetResponse> _assets;
+    private readonly Dictionary<Guid, AssetResponse> _assets;
     private readonly Dictionary<Guid, string> _tickers;
     private readonly DataGridView _positions = UiTheme.Grid();
     private readonly DataGridView _operations = UiTheme.Grid();
@@ -45,6 +45,7 @@ internal sealed class PortfolioForm : AsyncForm
     private Dictionary<Guid, decimal>? _held;
     private CancellationTokenSource? _assetQuoteCancellation;
     private decimal? _suggestedPrice;
+    private bool _rebindingAssets;
     private int _positionsVersion;
     private readonly Label _status = UiTheme.Label("", 9);
     private int _loading;
@@ -72,6 +73,7 @@ internal sealed class PortfolioForm : AsyncForm
         _unitPrice.TextChanged += (_, _) => ShowTotal();
         _asset.SelectedIndexChanged += (_, _) =>
         {
+            if (_rebindingAssets) return;
             UpdateActions();
             // O preço que estava no campo era de outro ativo: sai, e a cotação do ativo escolhido entra no lugar.
             _unitPrice.Value = 0;
@@ -82,6 +84,7 @@ internal sealed class PortfolioForm : AsyncForm
         {
             LoadAll();
             LoadAssetQuote();
+            LoadCatalog();
         };
         FormClosed += (_, _) =>
         {
@@ -231,9 +234,7 @@ internal sealed class PortfolioForm : AsyncForm
         actions.Controls.Add(_registerButton);
         actions.Controls.Add(_deleteButton);
         AddWide(actions, 9);
-        var note = UiTheme.Label(_assets.Count == 0
-            ? "Adicione ativos à watchlist para registrar operações: a API exige o identificador interno do ativo."
-            : "Somente ativos da sua watchlist aparecem na lista. O preço é informado na moeda do ativo. Vendas acima da quantidade em carteira são recusadas pela API.", 8.5f);
+        var note = UiTheme.Label("A lista traz o catálogo de ativos do servidor e a sua watchlist. O preço é informado na moeda do ativo. Vendas acima da quantidade em carteira são recusadas pela API.", 8.5f);
         note.ForeColor = UiTheme.InkMuted;
         note.MaximumSize = new Size(290, 0);
         AddWide(note, 10);
@@ -417,6 +418,46 @@ internal sealed class PortfolioForm : AsyncForm
     {
         _held = null;
         ShowAssetHint();
+    }
+
+    private void LoadCatalog()
+    {
+        if (!IsCurrentSession) return;
+        Run(async cancellationToken =>
+        {
+            var catalog = await _api.GetCatalogAsync(cancellationToken);
+            if (IsCurrentSession) AddAssets(catalog);
+        }, exception => HandleError(exception, _status));
+    }
+
+    private void AddAssets(IEnumerable<AssetResponse> assets)
+    {
+        var added = false;
+        foreach (var asset in assets)
+        {
+            if (!_assets.TryAdd(asset.Id, asset)) continue;
+            _tickers.TryAdd(asset.Id, asset.Ticker);
+            added = true;
+        }
+        if (!added) return;
+
+        var selected = (_asset.SelectedItem as AssetChoice)?.Asset.Id;
+        _rebindingAssets = true;
+        try
+        {
+            _asset.BeginUpdate();
+            _asset.Items.Clear();
+            foreach (var asset in _assets.Values.OrderBy(asset => asset.Ticker)) _asset.Items.Add(new AssetChoice(asset));
+            _asset.EndUpdate();
+            if (selected is { } id) _asset.SelectedIndex = _asset.Items.Cast<AssetChoice>().ToList().FindIndex(choice => choice.Asset.Id == id);
+        }
+        finally
+        {
+            _rebindingAssets = false;
+        }
+        foreach (DataGridViewRow row in _operations.Rows) row.Cells["Ativo"].Value = Ticker(((OperationResponse)row.Tag!).AtivoId);
+        if (selected is null && _asset.Items.Count > 0) _asset.SelectedIndex = 0;
+        UpdateActions();
     }
 
     private void LoadAssetQuote()
